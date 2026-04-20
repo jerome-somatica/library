@@ -28,8 +28,17 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
 
 /* Filters bar */
 .filters {
-  background: rgba(235, 211, 160, 0.03);
+  background: rgba(13, 30, 37, 0.95);
+  backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(235, 211, 160, 0.1);
+}
+/* Sur desktop, header + filtres restent fixés en haut, seule la galerie scrolle */
+@media (min-width: 768px) {
+  .filters {
+    position: sticky;
+    top: 52px; /* hauteur approx du header (padding 14px + title ~24px) */
+    z-index: 49;
+  }
 }
 .filters-row {
   padding: 10px 20px;
@@ -396,6 +405,169 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 @media (min-width: 768px) {
   .filters-toggle-secondary { display: none; }
 }
+
+/* -------------------------------------------------------------------------
+   Onglets admin (Galerie / Visages / Maintenance)
+   ------------------------------------------------------------------------- */
+.view-tabs {
+  display: flex; gap: 4px; padding: 8px 20px;
+  background: rgba(13, 30, 37, 0.95);
+  border-bottom: 1px solid rgba(235, 211, 160, 0.1);
+  position: sticky; top: 52px; z-index: 49;
+  overflow-x: auto;
+}
+.view-tab {
+  background: transparent; color: rgba(235, 211, 160, 0.6);
+  border: 1px solid transparent; border-radius: 6px;
+  padding: 6px 12px; font-size: 13px; font-weight: 500;
+  cursor: pointer; white-space: nowrap;
+  font-family: inherit; transition: all 0.15s;
+}
+.view-tab:hover { color: #ebd3a0; background: rgba(235, 211, 160, 0.06); }
+.view-tab.active {
+  background: rgba(235, 211, 160, 0.12);
+  border-color: rgba(235, 211, 160, 0.3);
+  color: #ebd3a0;
+}
+@media (min-width: 768px) {
+  .view-tabs {
+    top: 52px;
+  }
+}
+.view { display: none; }
+.view.active { display: block; }
+
+/* -------------------------------------------------------------------------
+   Vue Visages
+   ------------------------------------------------------------------------- */
+.faces-wrap { padding: 20px; max-width: 1400px; margin: 0 auto; }
+.faces-toolbar {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.faces-toolbar .info {
+  font-size: 13px; opacity: 0.7; margin-left: auto;
+}
+.faces-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.face-card {
+  background: rgba(235, 211, 160, 0.04);
+  border: 1px solid rgba(235, 211, 160, 0.12);
+  border-radius: 10px;
+  padding: 12px;
+}
+.face-card.named { border-color: rgba(168, 230, 168, 0.25); }
+.face-card.cluster { border-color: rgba(255, 200, 120, 0.25); }
+.face-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; gap: 8px;
+}
+.face-card-name {
+  font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.face-card-badge {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.05em;
+  padding: 3px 8px; border-radius: 999px; text-transform: uppercase;
+}
+.face-card-badge.named { background: rgba(168, 230, 168, 0.2); color: #a8e6a8; }
+.face-card-badge.cluster { background: rgba(255, 200, 120, 0.2); color: #ffc878; }
+.face-thumbs {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+  margin-bottom: 10px;
+}
+.face-thumb {
+  aspect-ratio: 1 / 1; background: #0a1418;
+  border-radius: 4px; overflow: hidden;
+  background-size: cover; background-position: center;
+}
+.face-card-meta {
+  font-size: 11px; opacity: 0.6; margin-bottom: 10px;
+}
+.face-card-rename {
+  display: flex; gap: 6px;
+}
+.face-card-rename input {
+  flex: 1; background: rgba(235, 211, 160, 0.08); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.15); border-radius: 6px;
+  padding: 6px 10px; font-size: 13px; font-family: inherit; outline: none;
+}
+.face-card-rename input:focus { border-color: #ebd3a0; }
+.face-card-rename button {
+  background: #ebd3a0; color: #0f2f3a; border: none;
+  padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+}
+.face-card-rename button:hover { background: #d9bf8a; }
+.face-card-rename button:disabled { opacity: 0.5; cursor: wait; }
+
+/* -------------------------------------------------------------------------
+   Vue Maintenance
+   ------------------------------------------------------------------------- */
+.maint-wrap { padding: 20px; max-width: 1000px; margin: 0 auto; }
+.maint-section {
+  background: rgba(235, 211, 160, 0.04);
+  border: 1px solid rgba(235, 211, 160, 0.12);
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+.maint-section h3 {
+  font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 500;
+  margin-bottom: 12px; color: #ebd3a0;
+}
+.maint-section p {
+  font-size: 13px; opacity: 0.75; line-height: 1.55; margin-bottom: 12px;
+}
+.maint-row {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.maint-row > label { font-size: 13px; opacity: 0.7; min-width: 90px; }
+.maint-row select, .maint-row input {
+  background: rgba(235, 211, 160, 0.08); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.15); border-radius: 6px;
+  padding: 7px 11px; font-size: 13px; font-family: inherit; outline: none;
+  flex: 1; min-width: 180px;
+}
+.maint-row select:focus, .maint-row input:focus { border-color: #ebd3a0; }
+.maint-btn {
+  background: rgba(235, 211, 160, 0.12); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.3); border-radius: 6px;
+  padding: 7px 14px; font-size: 13px; font-weight: 500;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.maint-btn:hover { background: rgba(235, 211, 160, 0.2); }
+.maint-btn.primary { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+.maint-btn.primary:hover { background: #d9bf8a; }
+.maint-btn.danger { border-color: rgba(255, 150, 150, 0.4); color: #ff9a9a; }
+.maint-btn:disabled { opacity: 0.5; cursor: wait; }
+.maint-status {
+  font-size: 12px; opacity: 0.7; margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.maint-status .ok { color: #a8e6a8; }
+.maint-status .err { color: #ff9a9a; }
+.maint-log {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px; padding: 10px 12px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-size: 11px; line-height: 1.5; max-height: 240px; overflow-y: auto;
+}
+.maint-log .row { opacity: 0.85; margin-bottom: 2px; }
+.maint-log .row .ok { color: #a8e6a8; }
+.maint-log .row .err { color: #ff9a9a; }
+.maint-log .row .pending { color: #ffc878; }
+.worker-offline {
+  background: rgba(255, 150, 150, 0.08);
+  border: 1px dashed rgba(255, 150, 150, 0.3);
+  color: #ff9a9a;
+  border-radius: 8px; padding: 14px; font-size: 13px;
+  margin-bottom: 18px;
+}
 </style>
 </head>
 <body>
@@ -425,6 +597,14 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
     </div>
   </header>
 
+  <nav class="view-tabs" id="view-tabs">
+    <button class="view-tab active" data-view="gallery">Galerie</button>
+    <button class="view-tab" data-view="faces">Visages</button>
+    <button class="view-tab" data-view="maintenance">Maintenance</button>
+  </nav>
+
+  <div class="view active" id="view-gallery">
+
   <div class="filters">
     <!-- Ligne 1 : recherche + essentiels -->
     <div class="filters-row">
@@ -432,8 +612,12 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 
       <select id="sort-select" title="Trier par">
         <option value="source_desc">📅 Plus récent (source)</option>
+        <option value="source_asc">📅 Plus ancien (source)</option>
         <option value="upload_desc">⬆️ Plus récent (upload)</option>
+        <option value="upload_asc">⬆️ Plus ancien (upload)</option>
+        <option value="location_asc">🌍 Lieu A-Z</option>
         <option value="quality_desc">⭐ Qualité ↓</option>
+        <option value="quality_asc">⭐ Qualité ↑</option>
         <option value="duration_asc">⏱️ Durée ↑</option>
         <option value="duration_desc">⏱️ Durée ↓</option>
       </select>
@@ -484,6 +668,13 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
           <span>Tags</span> <span class="caret">▼</span>
         </button>
         <div class="multi-select-panel" id="tags-panel"></div>
+      </div>
+
+      <div class="multi-select" data-filter="personsNames">
+        <button class="multi-select-btn" id="personsNames-btn">
+          <span>👤 Personnes</span> <span class="caret">▼</span>
+        </button>
+        <div class="multi-select-panel" id="personsNames-panel"></div>
       </div>
 
       <select id="ambiance-filter">
@@ -543,6 +734,88 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
   <div class="gallery" id="gallery">
     <div class="loading">Chargement des clips...</div>
   </div>
+
+  </div><!-- /#view-gallery -->
+
+  <div class="view" id="view-faces">
+    <div class="faces-wrap">
+      <div class="faces-toolbar">
+        <div class="faces-title">Visages identifiés</div>
+        <div class="faces-actions">
+          <button class="maint-btn" id="faces-refresh">↻ Rafraîchir</button>
+          <button class="maint-btn primary" id="faces-run-match">Relancer le matching</button>
+        </div>
+      </div>
+      <div class="faces-status" id="faces-status"></div>
+      <div class="faces-grid" id="faces-grid">
+        <div class="maint-status">Chargement...</div>
+      </div>
+    </div>
+  </div><!-- /#view-faces -->
+
+  <div class="view" id="view-maintenance">
+    <div class="maint-wrap">
+      <div class="worker-offline" id="worker-offline" style="display:none">
+        ⚠️ Le worker local n'est pas joignable. Vérifie qu'il tourne (<code>library_worker.py</code>) et que l'URL est correcte dans les réglages.
+      </div>
+
+      <div class="maint-section">
+        <h3>Connexion au worker</h3>
+        <div class="maint-row">
+          <label for="worker-url-input">URL du worker</label>
+          <input type="text" id="worker-url-input" placeholder="https://worker.somatica.fr ou http://localhost:8787">
+        </div>
+        <div class="maint-row">
+          <label for="worker-token-input">Token</label>
+          <input type="password" id="worker-token-input" placeholder="Token secret">
+        </div>
+        <div class="maint-row">
+          <button class="maint-btn primary" id="worker-save">Enregistrer</button>
+          <button class="maint-btn" id="worker-ping">Tester la connexion</button>
+          <span class="maint-status" id="worker-status">Non configuré</span>
+        </div>
+      </div>
+
+      <div class="maint-section">
+        <h3>Synchro iCloud</h3>
+        <div class="maint-row">
+          <label for="album-select">Album source</label>
+          <select id="album-select">
+            <option value="">Chargement...</option>
+          </select>
+          <button class="maint-btn" id="albums-refresh">↻</button>
+        </div>
+        <div class="maint-row">
+          <button class="maint-btn primary" id="run-sync">Synchroniser l'album</button>
+          <span class="maint-status" id="sync-status"></span>
+        </div>
+      </div>
+
+      <div class="maint-section">
+        <h3>Miniatures</h3>
+        <div class="maint-row">
+          <button class="maint-btn" id="thumbs-check">Vérifier manquantes</button>
+          <button class="maint-btn primary" id="thumbs-run">Regénérer manquantes</button>
+          <button class="maint-btn danger" id="thumbs-redo">Regénérer tout (--redo)</button>
+          <span class="maint-status" id="thumbs-status"></span>
+        </div>
+      </div>
+
+      <div class="maint-section">
+        <h3>Reconnaissance de visages</h3>
+        <div class="maint-row">
+          <button class="maint-btn" id="faces-build">Build (apprendre sur vidéos mono-personne)</button>
+          <button class="maint-btn primary" id="faces-match">Match (identifier _UNKNOWN_)</button>
+          <span class="maint-status" id="facejob-status"></span>
+        </div>
+      </div>
+
+      <div class="maint-section">
+        <h3>Journal</h3>
+        <div class="maint-log" id="maint-log"></div>
+      </div>
+    </div>
+  </div><!-- /#view-maintenance -->
 </div>
 
 <div class="selection-bar" id="selection-bar">
@@ -572,5 +845,6 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
+<script src="admin.js"></script>
 </body>
 </html>
