@@ -28,21 +28,126 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
 
 /* Filters bar */
 .filters {
-  padding: 14px 20px;
   background: rgba(235, 211, 160, 0.03);
   border-bottom: 1px solid rgba(235, 211, 160, 0.1);
-  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
 }
+.filters-row {
+  padding: 10px 20px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+.filters-row + .filters-row { border-top: 1px dashed rgba(235, 211, 160, 0.08); }
 .filters input, .filters select {
   background: rgba(235, 211, 160, 0.08); color: #ebd3a0;
   border: 1px solid rgba(235, 211, 160, 0.15);
-  padding: 8px 12px; border-radius: 6px; font-size: 14px; font-family: inherit;
+  padding: 7px 11px; border-radius: 6px; font-size: 13px; font-family: inherit;
   outline: none; transition: border-color 0.15s;
 }
 .filters input:focus, .filters select:focus { border-color: #ebd3a0; }
 .filters input::placeholder { color: rgba(235, 211, 160, 0.5); }
-.filters input[type="search"] { flex: 1; min-width: 200px; }
-.filters .count-filtered { font-size: 13px; opacity: 0.6; margin-left: auto; }
+.filters input[type="search"] { flex: 1; min-width: 180px; }
+.filters .count-filtered {
+  font-size: 12px; opacity: 0.75; margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.filters .count-filtered b { color: #ebd3a0; font-weight: 600; }
+
+/* Chip group (toggles) */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(235, 211, 160, 0.06);
+  border: 1px solid rgba(235, 211, 160, 0.15);
+  color: rgba(235, 211, 160, 0.75);
+  padding: 6px 11px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: all 0.15s; user-select: none;
+}
+.chip:hover { border-color: rgba(235, 211, 160, 0.35); color: #ebd3a0; }
+.chip.active {
+  background: #ebd3a0; color: #0f2f3a;
+  border-color: #ebd3a0;
+}
+.chip.primary-chip {
+  background: rgba(235, 211, 160, 0.12);
+  border-color: rgba(235, 211, 160, 0.3);
+  color: #ebd3a0;
+}
+.chip.primary-chip.active {
+  background: #a8e6a8; border-color: #a8e6a8; color: #0a2a0a;
+}
+
+/* Quality slider */
+.slider-wrap {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(235, 211, 160, 0.06);
+  border: 1px solid rgba(235, 211, 160, 0.15);
+  padding: 5px 12px; border-radius: 20px;
+  font-size: 12px;
+}
+.slider-wrap label { color: rgba(235,211,160,0.7); font-weight: 500; }
+.slider-wrap input[type="range"] {
+  width: 90px; accent-color: #ebd3a0;
+  background: transparent; border: 0; padding: 0;
+}
+.slider-wrap .val {
+  color: #ebd3a0; font-weight: 600; min-width: 24px; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Multi-select container */
+.multi-select {
+  position: relative;
+  display: inline-block;
+}
+.multi-select-btn {
+  background: rgba(235, 211, 160, 0.08);
+  border: 1px solid rgba(235, 211, 160, 0.15);
+  color: #ebd3a0;
+  padding: 7px 11px; border-radius: 6px; font-size: 13px;
+  cursor: pointer; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.multi-select-btn:hover { border-color: rgba(235, 211, 160, 0.35); }
+.multi-select-btn .caret { font-size: 9px; opacity: 0.6; }
+.multi-select-btn.has-selection {
+  background: rgba(235, 211, 160, 0.18);
+  border-color: #ebd3a0;
+}
+.multi-select-panel {
+  display: none;
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 30;
+  min-width: 220px; max-width: 320px; max-height: 280px; overflow-y: auto;
+  background: #0f2f3a; border: 1px solid rgba(235, 211, 160, 0.25);
+  border-radius: 8px; padding: 6px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+}
+.multi-select.open .multi-select-panel { display: block; }
+.multi-select-panel .opt {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 4px; cursor: pointer;
+  font-size: 13px; color: rgba(235, 211, 160, 0.85);
+  transition: background 0.1s;
+}
+.multi-select-panel .opt:hover { background: rgba(235, 211, 160, 0.08); }
+.multi-select-panel .opt.selected { color: #ebd3a0; background: rgba(235, 211, 160, 0.12); }
+.multi-select-panel .opt .tick {
+  width: 14px; height: 14px; border-radius: 3px;
+  border: 1.5px solid rgba(235, 211, 160, 0.4);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: bold;
+}
+.multi-select-panel .opt.selected .tick {
+  background: #ebd3a0; border-color: #ebd3a0; color: #0f2f3a;
+}
+.multi-select-panel .opt .cnt { margin-left: auto; opacity: 0.5; font-size: 11px; }
+
+/* Reset button */
+.btn-reset {
+  background: transparent; color: rgba(235, 211, 160, 0.7);
+  border: 1px dashed rgba(235, 211, 160, 0.25);
+  padding: 6px 11px; border-radius: 6px; font-size: 12px;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.btn-reset:hover { color: #ebd3a0; border-color: #ebd3a0; border-style: solid; }
 
 /* Zoom control (segmented buttons) */
 .zoom-control {
@@ -53,9 +158,9 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
 }
 .zoom-control button {
   background: transparent; border: 0; color: rgba(235,211,160,0.55);
-  padding: 6px 10px; font-size: 13px; font-weight: 600;
+  padding: 5px 9px; font-size: 12px; font-weight: 600;
   font-family: inherit; border-radius: 6px; cursor: pointer;
-  min-width: 34px; transition: background 0.12s, color 0.12s;
+  min-width: 30px; transition: background 0.12s, color 0.12s;
 }
 .zoom-control button.active { background: rgba(235,211,160,0.22); color: #ebd3a0; }
 .zoom-control button:active { transform: scale(0.95); }
@@ -69,13 +174,12 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
   display: grid;
   grid-template-columns: repeat(var(--cols), 1fr);
   gap: var(--gap);
-  touch-action: pan-y; /* permet le pinch sur la grille */
+  touch-action: pan-y;
 }
 @media (min-width: 768px) {
   .gallery { padding: 20px; --gap: 14px; }
 }
 
-/* Adaptation des cards quand la grille est dense (3+ colonnes) */
 .gallery[data-dense="1"] .card .info { padding: 6px 8px; font-size: 11px; }
 .gallery[data-dense="1"] .card .info .meta { display: none; }
 .gallery[data-dense="2"] .card .info { display: none; }
@@ -99,7 +203,10 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
   font-size: 32px; color: rgba(235,211,160,0.25);
   position: relative;
 }
-.card .thumb video { width: 100%; height: 100%; object-fit: cover; }
+.card .thumb img, .card .thumb video {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.card .thumb img { display: block; background: #000; }
 .card .thumb .play-icon {
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
@@ -120,8 +227,20 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
   padding: 2px 6px; border-radius: 4px;
   font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums;
 }
-.card .status-badge {
+.card .usable-badge {
+  position: absolute; bottom: 8px; left: 8px;
+  background: rgba(168, 230, 168, 0.9); color: #0a2a0a;
+  padding: 2px 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+}
+.card .quality-score {
   position: absolute; top: 8px; right: 8px;
+  background: rgba(0,0,0,0.75); color: #ebd3a0;
+  padding: 2px 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 600;
+}
+.card .status-badge {
+  position: absolute; top: 32px; right: 8px;
   padding: 2px 8px; border-radius: 4px;
   font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
 }
@@ -148,6 +267,13 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
   z-index: 2;
 }
 .card.selected .select-checkbox { background: #ebd3a0; color: #0f2f3a; }
+
+/* Sentinel (infinite scroll trigger) */
+.sentinel {
+  grid-column: 1 / -1;
+  padding: 30px 10px; text-align: center;
+  color: rgba(235,211,160,0.5); font-size: 13px; font-style: italic;
+}
 
 /* Modal */
 .modal-bg {
@@ -241,6 +367,7 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 
 /* Empty state */
 .empty-state {
+  grid-column: 1 / -1;
   text-align: center; padding: 80px 20px; color: rgba(235,211,160,0.5);
 }
 .empty-state h2 { font-family: 'Cormorant Garamond', serif; font-size: 24px; margin-bottom: 10px; color: #ebd3a0; }
@@ -257,6 +384,18 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 .toast.error { border-color: rgba(255, 150, 150, 0.4); color: #ff9a9a; }
 .toast.success { border-color: rgba(150, 220, 150, 0.4); color: #a8e6a8; }
 @keyframes slideIn { from { transform: translateX(120%); } to { transform: translateX(0); } }
+
+/* Mobile adjustments : filtres secondaires cachés par défaut */
+@media (max-width: 767px) {
+  .filters-row.secondary { display: none; }
+  .filters-row.secondary.open { display: flex; }
+  .filters-toggle-secondary {
+    margin-left: auto;
+  }
+}
+@media (min-width: 768px) {
+  .filters-toggle-secondary { display: none; }
+}
 </style>
 </head>
 <body>
@@ -287,36 +426,117 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
   </header>
 
   <div class="filters">
-    <input type="search" id="search-input" placeholder="Rechercher dans les descriptions et tags...">
-    <select id="duration-filter">
-      <option value="">Toutes durées</option>
-      <option value="short">Courte (0-15s)</option>
-      <option value="medium">Moyenne (15-60s)</option>
-      <option value="long">Longue (60s+)</option>
-    </select>
-    <select id="ambiance-filter">
-      <option value="">Toutes ambiances</option>
-    </select>
-    <select id="status-filter">
-      <option value="available">Dispo</option>
-      <option value="in_use">Utilisé</option>
-      <option value="archived">Archivé</option>
-      <option value="rejected">Rejeté</option>
-      <option value="">Tous</option>
-    </select>
-    <select id="analysis-filter">
-      <option value="">Toutes analyses</option>
-      <option value="done">Analysées</option>
-      <option value="pending">En attente</option>
-      <option value="in_progress">En cours</option>
-      <option value="failed">Échec</option>
-    </select>
-    <span class="count-filtered" id="filtered-count"></span>
-    <div class="zoom-control" id="zoom-control" aria-label="Densité de la grille">
-      <button data-cols="1" title="1 colonne">1</button>
-      <button data-cols="2" title="2 colonnes">2</button>
-      <button data-cols="3" title="3 colonnes">3</button>
-      <button data-cols="4" title="4 colonnes">4</button>
+    <!-- Ligne 1 : recherche + essentiels -->
+    <div class="filters-row">
+      <input type="search" id="search-input" placeholder="Rechercher description, tags, transcript...">
+
+      <select id="sort-select" title="Trier par">
+        <option value="source_desc">📅 Plus récent (source)</option>
+        <option value="upload_desc">⬆️ Plus récent (upload)</option>
+        <option value="quality_desc">⭐ Qualité ↓</option>
+        <option value="duration_asc">⏱️ Durée ↑</option>
+        <option value="duration_desc">⏱️ Durée ↓</option>
+      </select>
+
+      <div class="chip primary-chip" id="usable-reel" title="Usable pour Reel">
+        <span>✨</span> Prêt Reel
+      </div>
+
+      <div class="slider-wrap" title="Qualité minimum">
+        <label for="quality-slider">⭐ ≥</label>
+        <input type="range" id="quality-slider" min="0" max="10" step="1" value="0">
+        <span class="val" id="quality-val">0</span>
+      </div>
+
+      <select id="persons-filter" title="Personnes">
+        <option value="">Toutes personnes</option>
+        <option value="0">Sans personne</option>
+        <option value="1">1 personne</option>
+        <option value="2+">2+ personnes</option>
+      </select>
+
+      <select id="intensity-filter" title="Intensité émotionnelle">
+        <option value="">Toutes intensités</option>
+        <option value="calm">Calme</option>
+        <option value="neutral">Neutre</option>
+        <option value="intense">Intense</option>
+      </select>
+
+      <div class="chip" id="chip-music-with" data-value="with">🎵 Musique</div>
+      <div class="chip" id="chip-music-without" data-value="without">🔇 Sans musique</div>
+      <div class="chip" id="chip-speech-with" data-value="with">💬 Paroles</div>
+      <div class="chip" id="chip-speech-without" data-value="without">🤫 Sans paroles</div>
+
+      <button class="btn-reset filters-toggle-secondary" id="toggle-secondary">Plus de filtres ↓</button>
+    </div>
+
+    <!-- Ligne 2 : multi-selects + secondaires -->
+    <div class="filters-row secondary">
+      <div class="multi-select" data-filter="emotions">
+        <button class="multi-select-btn" id="emotions-btn">
+          <span>Émotion</span> <span class="caret">▼</span>
+        </button>
+        <div class="multi-select-panel" id="emotions-panel"></div>
+      </div>
+
+      <div class="multi-select" data-filter="tags">
+        <button class="multi-select-btn" id="tags-btn">
+          <span>Tags</span> <span class="caret">▼</span>
+        </button>
+        <div class="multi-select-panel" id="tags-panel"></div>
+      </div>
+
+      <select id="ambiance-filter">
+        <option value="">Toutes ambiances</option>
+      </select>
+
+      <select id="movement-filter">
+        <option value="">Tous mouvements</option>
+      </select>
+
+      <select id="lighting-filter">
+        <option value="">Tous éclairages</option>
+      </select>
+
+      <select id="location-filter">
+        <option value="">Tous lieux</option>
+      </select>
+
+      <select id="duration-filter">
+        <option value="">Toutes durées</option>
+        <option value="short">Courte (0-15s)</option>
+        <option value="medium">Moyenne (15-60s)</option>
+        <option value="long">Longue (60s+)</option>
+      </select>
+
+      <select id="status-filter">
+        <option value="available">Dispo</option>
+        <option value="in_use">Utilisé</option>
+        <option value="archived">Archivé</option>
+        <option value="rejected">Rejeté</option>
+        <option value="">Tous statuts</option>
+      </select>
+
+      <select id="analysis-filter">
+        <option value="">Toutes analyses</option>
+        <option value="done">Analysées</option>
+        <option value="pending">En attente</option>
+        <option value="in_progress">En cours</option>
+        <option value="failed">Échec</option>
+      </select>
+
+      <button class="btn-reset" id="reset-filters">↻ Réinitialiser</button>
+    </div>
+
+    <!-- Ligne 3 : infos + zoom -->
+    <div class="filters-row" style="padding-top:6px; padding-bottom:8px;">
+      <span class="count-filtered" id="filtered-count"></span>
+      <div class="zoom-control" id="zoom-control" aria-label="Densité de la grille">
+        <button data-cols="1" title="1 colonne">1</button>
+        <button data-cols="2" title="2 colonnes">2</button>
+        <button data-cols="3" title="3 colonnes">3</button>
+        <button data-cols="4" title="4 colonnes">4</button>
+      </div>
     </div>
   </div>
 
