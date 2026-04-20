@@ -1,31 +1,78 @@
 /* ============================================================
-   Somatica Library - app.js
-   Galerie des clips vidéo stockés sur Cloudflare R2
-   Backend : Supabase (table video_library)
+   Somatica Library - app.js v2 (2026-04-20)
+   Galerie des clips vidéo stockés sur Cloudflare R2.
+   Backend : Supabase (table video_library).
+
+   Optimisations par rapport à v1 :
+   - SELECT explicite (exclut analysis_raw, transcript_text, audio_summary, etc.)
+   - Filtres côté serveur via .eq/.gte/.contains
+   - Pagination .range() + infinite scroll (IntersectionObserver)
+   - Lazy-load des vignettes via IntersectionObserver
+   - Utilise thumbnail_url (JPG 600px) quand dispo, fallback video preload=metadata
+   - Persistance localStorage des filtres
    ============================================================ */
 
 // ---------- CONFIG ----------
 const SUPABASE_URL = 'https://zrdlvoovrnglxcgoyyeb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_ukrn7WQHygY5FUtNiMxxfA_E-esyAUs';
 const JEROME_USER_ID = 'ffaaef6d-7636-417a-837c-7823751adcdd';
+const PAGE_SIZE = 60;
+
+// Colonnes utiles UNIQUEMENT. On exclut les champs lourds (transcript, analysis_raw)
+// qui ne servent pas au rendu grid et plombaient le download.
+const LIGHT_COLS = [
+  'id', 'file_name', 'r2_url', 'r2_key', 'thumbnail_url', 'thumbnail_generated_at',
+  'duration_seconds', 'width', 'height', 'size_bytes',
+  'created_at_source', 'created_at', 'updated_at',
+  'status', 'analysis_status', 'analyzed_at',
+  'description_short', 'notes', 'tags',
+  'ambiance', 'movement', 'lighting',
+  'quality_score', 'persons_count', 'persons_detected',
+  'music_present', 'has_speech', 'emotional_intensity', 'emotional_states',
+  'usable_for_reel', 'location_name',
+].join(',');
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
 
 // ---------- STATE ----------
+const DEFAULT_FILTERS = {
+  search: '',
+  sort: 'source_desc',
+  status: 'available',
+  analysis: '',
+  duration: '',
+  ambiance: '',
+  movement: '',
+  lighting: '',
+  location: '',
+  persons: '',
+  qualityMin: 0,
+  intensity: '',
+  music: '',     // '' | 'with' | 'without'
+  speech: '',    // '' | 'with' | 'without'
+  usableReel: false,
+  emotions: [],  // multi
+  tags: [],      // multi
+};
+
 const state = {
-  allClips: [],          // cache complet
-  filtered: [],          // résultat filtré
-  selection: new Set(),  // ids sélectionnés
+  clips: [],                  // cumul paginé
+  selection: new Set(),
   currentModalId: null,
   session: null,
-  filters: {
-    search: '',
-    duration: '',
-    ambiance: '',
-    status: 'available',
-    analysis: '',
+  filters: loadFilters(),
+  cols: null,
+  page: 0,
+  totalRows: null,
+  filteredCount: null,
+  loading: false,
+  finished: false,
+  // Catalogues remplis depuis la DB (distinct values)
+  catalog: {
+    ambiances: [], movements: [], lightings: [], locations: [],
+    emotions: [], tags: [],
   },
 };
 
@@ -42,12 +89,27 @@ const stepEmail = $('step-email');
 const stepCode = $('step-code');
 const authMsg = $('auth-msg');
 const totalCount = $('total-count');
+const filteredCount = $('filtered-count');
 const searchInput = $('search-input');
-const durationFilter = $('duration-filter');
+const sortSelect = $('sort-select');
+const usableReelChip = $('usable-reel');
+const qualitySlider = $('quality-slider');
+const qualityVal = $('quality-val');
+const personsFilter = $('persons-filter');
+const intensityFilter = $('intensity-filter');
+const chipMusicWith = $('chip-music-with');
+const chipMusicWithout = $('chip-music-without');
+const chipSpeechWith = $('chip-speech-with');
+const chipSpeechWithout = $('chip-speech-without');
 const ambianceFilter = $('ambiance-filter');
+const movementFilter = $('movement-filter');
+const lightingFilter = $('lighting-filter');
+const locationFilter = $('location-filter');
+const durationFilter = $('duration-filter');
 const statusFilter = $('status-filter');
 const analysisFilter = $('analysis-filter');
-const filteredCount = $('filtered-count');
+const resetFiltersBtn = $('reset-filters');
+const toggleSecondaryBtn = $('toggle-secondary');
 const gallery = $('gallery');
 const selectionBar = $('selection-bar');
 const selCount = $('sel-count');
@@ -79,6 +141,17 @@ function fmtDuration(sec) {
   return `${m}m${s.toString().padStart(2, '0')}`;
 }
 
+function fmtDurationLong(sec) {
+  if (sec == null || sec === 0) return '0s';
+  sec = Math.round(Number(sec));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}h${m.toString().padStart(2,'0')}m`;
+  if (m > 0) return `${m}m${s.toString().padStart(2,'0')}`;
+  return `${s}s`;
+}
+
 function fmtDate(iso) {
   if (!iso) return '—';
   try {
@@ -92,6 +165,19 @@ function debounce(fn, ms) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
+function loadFilters() {
+  try {
+    const raw = localStorage.getItem('library_filters_v2');
+    if (!raw) return { ...DEFAULT_FILTERS };
+    const parsed = JSON.parse(raw);
+    return { ...DEFAULT_FILTERS, ...parsed };
+  } catch { return { ...DEFAULT_FILTERS }; }
+}
+
+function saveFilters() {
+  try { localStorage.setItem('library_filters_v2', JSON.stringify(state.filters)); } catch (e) {}
+}
+
 // ---------- AUTH ----------
 async function checkSession() {
   const { data: { session } } = await sb.auth.getSession();
@@ -99,7 +185,9 @@ async function checkSession() {
   if (session) {
     authScreen.style.display = 'none';
     app.style.display = 'block';
-    await loadClips();
+    syncFiltersToUI();
+    await bootstrapCatalogs();
+    await loadFirstPage();
   } else {
     authScreen.style.display = 'flex';
     app.style.display = 'none';
@@ -167,11 +255,9 @@ verifyCodeBtn.addEventListener('click', async () => {
 codeInput && codeInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') verifyCodeBtn.click();
 });
-
 emailInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') sendLinkBtn.click();
 });
-
 changeEmailLink && changeEmailLink.addEventListener('click', e => {
   e.preventDefault();
   pendingEmail = '';
@@ -186,105 +272,315 @@ sb.auth.onAuthStateChange((_event, session) => {
   if (session) {
     authScreen.style.display = 'none';
     app.style.display = 'block';
-    if (!state.allClips.length) loadClips();
+    if (!state.clips.length) {
+      syncFiltersToUI();
+      bootstrapCatalogs().then(loadFirstPage);
+    }
   } else {
     authScreen.style.display = 'flex';
     app.style.display = 'none';
   }
 });
 
-// ---------- DATA ----------
-async function loadClips() {
-  gallery.innerHTML = '<div class="loading">Chargement des clips...</div>';
+// ---------- CATALOGS (distinct values pour multi-select) ----------
+async function bootstrapCatalogs() {
+  // On récupère les valeurs distinctes depuis un échantillon pour nourrir les multi-select.
+  // Plus simple que des GROUP BY : on lit les 1000 premières lignes analysées.
   const { data, error } = await sb
     .from('video_library')
-    .select('*')
-    .order('created_at_source', { ascending: false, nullsFirst: false })
-    .limit(5000);
+    .select('ambiance,movement,lighting,location_name,emotional_states,tags')
+    .eq('analysis_status', 'done')
+    .limit(2000);
+  if (error) { console.warn('catalog load error', error); return; }
+
+  const amb = new Map(), mov = new Map(), lig = new Map(), loc = new Map();
+  const emo = new Map(), tag = new Map();
+  for (const r of data || []) {
+    if (r.ambiance) amb.set(r.ambiance, (amb.get(r.ambiance) || 0) + 1);
+    if (r.movement) mov.set(r.movement, (mov.get(r.movement) || 0) + 1);
+    if (r.lighting) lig.set(r.lighting, (lig.get(r.lighting) || 0) + 1);
+    if (r.location_name) loc.set(r.location_name, (loc.get(r.location_name) || 0) + 1);
+    (r.emotional_states || []).forEach(e => emo.set(e, (emo.get(e) || 0) + 1));
+    (r.tags || []).forEach(t => tag.set(t, (tag.get(t) || 0) + 1));
+  }
+  const toSorted = (m) => [...m.entries()].sort((a,b) => b[1]-a[1]).map(([v, c]) => ({ value: v, count: c }));
+  state.catalog.ambiances = toSorted(amb);
+  state.catalog.movements = toSorted(mov);
+  state.catalog.lightings = toSorted(lig);
+  state.catalog.locations = toSorted(loc);
+  state.catalog.emotions  = toSorted(emo);
+  state.catalog.tags      = toSorted(tag);
+
+  populateSelect(ambianceFilter, state.catalog.ambiances, 'Toutes ambiances');
+  populateSelect(movementFilter, state.catalog.movements, 'Tous mouvements');
+  populateSelect(lightingFilter, state.catalog.lightings, 'Tous éclairages');
+  populateSelect(locationFilter, state.catalog.locations, 'Tous lieux');
+  populateMultiSelect('emotions', state.catalog.emotions);
+  populateMultiSelect('tags', state.catalog.tags);
+
+  // Restaurer les valeurs après populate
+  ambianceFilter.value = state.filters.ambiance || '';
+  movementFilter.value = state.filters.movement || '';
+  lightingFilter.value = state.filters.lighting || '';
+  locationFilter.value = state.filters.location || '';
+  updateMultiSelectBtn('emotions');
+  updateMultiSelectBtn('tags');
+}
+
+function populateSelect(el, items, placeholder) {
+  const cur = el.value;
+  el.innerHTML = `<option value="">${placeholder}</option>` +
+    items.map(({ value, count }) => `<option value="${escapeAttr(value)}">${escapeHtml(value)} (${count})</option>`).join('');
+  el.value = cur;
+}
+
+function populateMultiSelect(kind, items) {
+  const panel = document.getElementById(`${kind}-panel`);
+  panel.innerHTML = '';
+  for (const { value, count } of items) {
+    const opt = document.createElement('div');
+    opt.className = 'opt';
+    opt.dataset.value = value;
+    opt.innerHTML = `
+      <div class="tick">${state.filters[kind].includes(value) ? '✓' : ''}</div>
+      <span>${escapeHtml(value)}</span>
+      <span class="cnt">${count}</span>
+    `;
+    if (state.filters[kind].includes(value)) opt.classList.add('selected');
+    opt.addEventListener('click', () => toggleMulti(kind, value));
+    panel.appendChild(opt);
+  }
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function escapeAttr(s) { return String(s).replace(/"/g, '&quot;'); }
+
+function toggleMulti(kind, value) {
+  const arr = state.filters[kind];
+  const idx = arr.indexOf(value);
+  if (idx > -1) arr.splice(idx, 1); else arr.push(value);
+  // Re-render le panel
+  const panel = document.getElementById(`${kind}-panel`);
+  for (const opt of panel.querySelectorAll('.opt')) {
+    const v = opt.dataset.value;
+    const selected = arr.includes(v);
+    opt.classList.toggle('selected', selected);
+    opt.querySelector('.tick').textContent = selected ? '✓' : '';
+  }
+  updateMultiSelectBtn(kind);
+  saveFilters();
+  resetAndReload();
+}
+
+function updateMultiSelectBtn(kind) {
+  const btn = document.getElementById(`${kind}-btn`);
+  const arr = state.filters[kind];
+  const label = kind === 'emotions' ? 'Émotion' : 'Tags';
+  if (arr.length) {
+    btn.querySelector('span:first-child').textContent = `${label} (${arr.length})`;
+    btn.classList.add('has-selection');
+  } else {
+    btn.querySelector('span:first-child').textContent = label;
+    btn.classList.remove('has-selection');
+  }
+}
+
+// Open/close multi-select panels
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('.multi-select').forEach(ms => {
+    if (ms.contains(e.target) && e.target.closest('.multi-select-btn')) {
+      ms.classList.toggle('open');
+    } else if (!ms.contains(e.target)) {
+      ms.classList.remove('open');
+    }
+  });
+});
+
+// ---------- DATA FETCH ----------
+function buildQuery() {
+  let q = sb.from('video_library').select(LIGHT_COLS, { count: 'exact' });
+
+  const f = state.filters;
+
+  if (f.status) q = q.eq('status', f.status);
+  if (f.analysis) q = q.eq('analysis_status', f.analysis);
+  if (f.ambiance) q = q.eq('ambiance', f.ambiance);
+  if (f.movement) q = q.eq('movement', f.movement);
+  if (f.lighting) q = q.eq('lighting', f.lighting);
+  if (f.location) q = q.eq('location_name', f.location);
+  if (f.intensity) q = q.eq('emotional_intensity', f.intensity);
+
+  if (f.qualityMin > 0) q = q.gte('quality_score', f.qualityMin);
+
+  if (f.usableReel) q = q.eq('usable_for_reel', true);
+
+  if (f.persons === '0') q = q.eq('persons_count', 0);
+  else if (f.persons === '1') q = q.eq('persons_count', 1);
+  else if (f.persons === '2+') q = q.gte('persons_count', 2);
+
+  if (f.music === 'with') q = q.eq('music_present', true);
+  else if (f.music === 'without') q = q.eq('music_present', false);
+
+  if (f.speech === 'with') q = q.eq('has_speech', true);
+  else if (f.speech === 'without') q = q.eq('has_speech', false);
+
+  if (f.duration === 'short') q = q.lt('duration_seconds', 15);
+  else if (f.duration === 'medium') q = q.gte('duration_seconds', 15).lt('duration_seconds', 60);
+  else if (f.duration === 'long') q = q.gte('duration_seconds', 60);
+
+  if (f.emotions.length) q = q.contains('emotional_states', f.emotions);
+  if (f.tags.length) q = q.contains('tags', f.tags);
+
+  if (f.search) {
+    const s = f.search.replace(/[%_]/g, '');
+    // ilike sur plusieurs colonnes via or()
+    q = q.or([
+      `description_short.ilike.%${s}%`,
+      `notes.ilike.%${s}%`,
+      `file_name.ilike.%${s}%`,
+      `ambiance.ilike.%${s}%`,
+      `location_name.ilike.%${s}%`,
+    ].join(','));
+  }
+
+  // Tri
+  switch (f.sort) {
+    case 'upload_desc':
+      q = q.order('created_at', { ascending: false, nullsFirst: false });
+      break;
+    case 'quality_desc':
+      q = q.order('quality_score', { ascending: false, nullsFirst: false })
+           .order('created_at_source', { ascending: false, nullsFirst: false });
+      break;
+    case 'duration_asc':
+      q = q.order('duration_seconds', { ascending: true, nullsFirst: false });
+      break;
+    case 'duration_desc':
+      q = q.order('duration_seconds', { ascending: false, nullsFirst: false });
+      break;
+    case 'source_desc':
+    default:
+      q = q.order('created_at_source', { ascending: false, nullsFirst: false });
+      break;
+  }
+
+  return q;
+}
+
+async function loadFirstPage() {
+  state.clips = [];
+  state.page = 0;
+  state.finished = false;
+  state.totalRows = null;
+  state.filteredCount = null;
+  gallery.innerHTML = '<div class="loading">Chargement...</div>';
+  await loadMore();
+}
+
+async function loadMore() {
+  if (state.loading || state.finished) return;
+  state.loading = true;
+  const from = state.page * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+  const { data, error, count } = await buildQuery().range(from, to);
+  state.loading = false;
   if (error) {
     console.error(error);
     gallery.innerHTML = `<div class="empty-state"><h2>Erreur</h2><p>${error.message}</p></div>`;
     return;
   }
-  state.allClips = data || [];
-  totalCount.textContent = `${state.allClips.length} clips`;
-  buildAmbianceOptions();
-  applyFilters();
-}
-
-function buildAmbianceOptions() {
-  const set = new Set();
-  for (const c of state.allClips) {
-    if (c.ambiance) set.add(c.ambiance);
+  if (count != null) {
+    state.filteredCount = count;
+    updateCounts();
   }
-  const sorted = [...set].sort();
-  const current = ambianceFilter.value;
-  ambianceFilter.innerHTML = '<option value="">Toutes ambiances</option>' +
-    sorted.map(a => `<option value="${a}">${a}</option>`).join('');
-  ambianceFilter.value = current;
-}
-
-// ---------- FILTERS ----------
-function applyFilters() {
-  const { search, duration, ambiance, status, analysis } = state.filters;
-  const q = search.toLowerCase().trim();
-
-  state.filtered = state.allClips.filter(c => {
-    // status
-    if (status && (c.status || 'available') !== status) return false;
-    // analysis
-    if (analysis && (c.analysis_status || 'pending') !== analysis) return false;
-    // ambiance
-    if (ambiance && c.ambiance !== ambiance) return false;
-    // duration
-    if (duration) {
-      const d = c.duration_seconds;
-      if (d == null) return false;
-      if (duration === 'short' && d >= 15) return false;
-      if (duration === 'medium' && (d < 15 || d >= 60)) return false;
-      if (duration === 'long' && d < 60) return false;
-    }
-    // search
-    if (q) {
-      const hay = [
-        c.description_short, c.notes, c.ambiance, c.movement, c.lighting,
-        c.file_name, c.transcript_text,
-        ...(c.tags || []),
-      ].filter(Boolean).join(' ').toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  });
-
-  filteredCount.textContent = `${state.filtered.length} affichés`;
+  if (!data || !data.length) {
+    state.finished = true;
+    renderGallery();
+    return;
+  }
+  state.clips.push(...data);
+  state.page += 1;
+  if (data.length < PAGE_SIZE) state.finished = true;
   renderGallery();
 }
 
-searchInput.addEventListener('input', debounce(e => {
-  state.filters.search = e.target.value;
-  applyFilters();
-}, 250));
+function resetAndReload() {
+  saveFilters();
+  loadFirstPage();
+}
 
-durationFilter.addEventListener('change', e => { state.filters.duration = e.target.value; applyFilters(); });
-ambianceFilter.addEventListener('change', e => { state.filters.ambiance = e.target.value; applyFilters(); });
-statusFilter.addEventListener('change', e => { state.filters.status = e.target.value; applyFilters(); });
-analysisFilter.addEventListener('change', e => { state.filters.analysis = e.target.value; applyFilters(); });
+function updateCounts() {
+  const totalDur = state.clips.reduce((s, c) => s + (Number(c.duration_seconds) || 0), 0);
+  const loaded = state.clips.length;
+  const filtered = state.filteredCount != null ? state.filteredCount : loaded;
+  totalCount.textContent = `${filtered} clips`;
+  filteredCount.innerHTML = `<b>${loaded}</b> / ${filtered} affichés · ~${fmtDurationLong(totalDur)} chargés`;
+}
 
-// init select default (status=available déjà sélectionné dans HTML)
-statusFilter.value = 'available';
+// ---------- GALLERY RENDER ----------
+// IntersectionObserver pour lazy-load des vignettes (image ou video)
+let thumbObserver = null;
+function getThumbObserver() {
+  if (thumbObserver) return thumbObserver;
+  thumbObserver = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      const el = e.target;
+      const srcImg = el.dataset.imgSrc;
+      const srcVid = el.dataset.vidSrc;
+      if (srcImg && el.tagName === 'IMG' && !el.src) {
+        el.src = srcImg;
+      } else if (srcVid && el.tagName === 'VIDEO' && !el.src) {
+        el.src = srcVid;
+      }
+      thumbObserver.unobserve(el);
+    }
+  }, { rootMargin: '400px 0px' });
+  return thumbObserver;
+}
 
-// ---------- GALLERY ----------
+// Sentinel pour infinite scroll
+let scrollObserver = null;
+function getScrollObserver() {
+  if (scrollObserver) return scrollObserver;
+  scrollObserver = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) loadMore();
+    }
+  }, { rootMargin: '300px 0px' });
+  return scrollObserver;
+}
+
 function renderGallery() {
-  if (!state.filtered.length) {
-    gallery.innerHTML = '<div class="empty-state"><h2>Aucun clip</h2><p>Ajuste tes filtres ou attends l\'analyse.</p></div>';
+  if (!state.clips.length) {
+    gallery.innerHTML = '<div class="empty-state"><h2>Aucun clip</h2><p>Ajuste tes filtres.</p></div>';
+    updateCounts();
     return;
   }
   const frag = document.createDocumentFragment();
-  for (const c of state.filtered) {
+  for (const c of state.clips) {
     frag.appendChild(makeCard(c));
+  }
+  // Ajouter le sentinel si pas fini
+  if (!state.finished) {
+    const sentinel = document.createElement('div');
+    sentinel.className = 'sentinel';
+    sentinel.id = 'sentinel';
+    sentinel.textContent = 'Chargement...';
+    frag.appendChild(sentinel);
+  } else if (state.clips.length > PAGE_SIZE) {
+    const end = document.createElement('div');
+    end.className = 'sentinel';
+    end.textContent = `— fin (${state.clips.length} clips) —`;
+    frag.appendChild(end);
   }
   gallery.innerHTML = '';
   gallery.appendChild(frag);
+  updateCounts();
+
+  // Observer le sentinel
+  const sentinel = document.getElementById('sentinel');
+  if (sentinel) getScrollObserver().observe(sentinel);
 }
 
 function makeCard(c) {
@@ -299,16 +595,45 @@ function makeCard(c) {
   // zone thumb
   const thumb = document.createElement('div');
   thumb.className = 'thumb';
-  // Vidéo lazy-loadée : poster statique via thumbnail du premier frame (video sans autoplay)
-  const video = document.createElement('video');
-  video.src = c.r2_url;
-  video.preload = 'metadata';
-  video.muted = true;
-  video.playsInline = true;
-  // preview au hover
-  video.addEventListener('mouseenter', () => { video.play().catch(() => {}); });
-  video.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
-  thumb.appendChild(video);
+
+  // Priorité : thumbnail_url (JPG léger, 1 requête légère) sinon <video preload=metadata>
+  if (c.thumbnail_url) {
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.dataset.imgSrc = c.thumbnail_url;
+    img.alt = c.ambiance || c.file_name || 'clip';
+    thumb.appendChild(img);
+    getThumbObserver().observe(img);
+
+    // Hover → swap vers <video> pour preview (desktop)
+    thumb.addEventListener('mouseenter', () => {
+      if (thumb.querySelector('video')) return;
+      const v = document.createElement('video');
+      v.src = c.r2_url;
+      v.muted = true;
+      v.playsInline = true;
+      v.autoplay = true;
+      v.style.position = 'absolute';
+      v.style.inset = '0';
+      thumb.appendChild(v);
+    });
+    thumb.addEventListener('mouseleave', () => {
+      const v = thumb.querySelector('video');
+      if (v) v.remove();
+    });
+  } else {
+    // Fallback : video preload=metadata lazy via observer
+    const video = document.createElement('video');
+    video.dataset.vidSrc = c.r2_url;
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    video.addEventListener('mouseenter', () => { video.play().catch(() => {}); });
+    video.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
+    thumb.appendChild(video);
+    getThumbObserver().observe(video);
+  }
 
   const playIcon = document.createElement('div');
   playIcon.className = 'play-icon';
@@ -321,6 +646,22 @@ function makeCard(c) {
     b.className = `status-badge ${as}`;
     b.textContent = as === 'pending' ? 'à analyser' : as === 'in_progress' ? 'analyse…' : 'échec';
     thumb.appendChild(b);
+  }
+
+  // quality badge (si analysé)
+  if (c.quality_score != null) {
+    const qb = document.createElement('div');
+    qb.className = 'quality-score';
+    qb.textContent = `⭐ ${Number(c.quality_score).toFixed(1)}`;
+    thumb.appendChild(qb);
+  }
+
+  // usable for reel pastille
+  if (c.usable_for_reel) {
+    const ub = document.createElement('div');
+    ub.className = 'usable-badge';
+    ub.textContent = '✨ REEL';
+    thumb.appendChild(ub);
   }
 
   // durée
@@ -352,7 +693,7 @@ function makeCard(c) {
   const meta = document.createElement('div');
   meta.className = 'meta';
   const bits = [];
-  if (c.persons_count != null) bits.push(c.persons_count === 0 ? 'pas de personne' : `${c.persons_count} pers.`);
+  if (c.persons_count != null) bits.push(c.persons_count === 0 ? 'solo' : `${c.persons_count} pers.`);
   if (c.movement) bits.push(c.movement);
   if (c.lighting) bits.push(c.lighting);
   if (!bits.length && c.created_at_source) bits.push(fmtDate(c.created_at_source));
@@ -361,18 +702,106 @@ function makeCard(c) {
 
   card.appendChild(info);
 
-  // click sur carte (hors checkbox) → modal
   card.addEventListener('click', () => openModal(c.id));
 
   return card;
 }
+
+// ---------- FILTERS UI WIRE ----------
+function syncFiltersToUI() {
+  const f = state.filters;
+  searchInput.value = f.search || '';
+  sortSelect.value = f.sort;
+  usableReelChip.classList.toggle('active', !!f.usableReel);
+  qualitySlider.value = f.qualityMin;
+  qualityVal.textContent = f.qualityMin;
+  personsFilter.value = f.persons;
+  intensityFilter.value = f.intensity;
+  chipMusicWith.classList.toggle('active', f.music === 'with');
+  chipMusicWithout.classList.toggle('active', f.music === 'without');
+  chipSpeechWith.classList.toggle('active', f.speech === 'with');
+  chipSpeechWithout.classList.toggle('active', f.speech === 'without');
+  durationFilter.value = f.duration;
+  statusFilter.value = f.status;
+  analysisFilter.value = f.analysis;
+  if (ambianceFilter) ambianceFilter.value = f.ambiance;
+  if (movementFilter) movementFilter.value = f.movement;
+  if (lightingFilter) lightingFilter.value = f.lighting;
+  if (locationFilter) locationFilter.value = f.location;
+}
+
+searchInput.addEventListener('input', debounce(e => {
+  state.filters.search = e.target.value;
+  resetAndReload();
+}, 300));
+
+sortSelect.addEventListener('change', e => {
+  state.filters.sort = e.target.value;
+  resetAndReload();
+});
+
+usableReelChip.addEventListener('click', () => {
+  state.filters.usableReel = !state.filters.usableReel;
+  usableReelChip.classList.toggle('active', state.filters.usableReel);
+  resetAndReload();
+});
+
+qualitySlider.addEventListener('input', e => {
+  const v = Number(e.target.value);
+  qualityVal.textContent = v;
+  state.filters.qualityMin = v;
+});
+qualitySlider.addEventListener('change', () => resetAndReload());
+
+personsFilter.addEventListener('change', e => { state.filters.persons = e.target.value; resetAndReload(); });
+intensityFilter.addEventListener('change', e => { state.filters.intensity = e.target.value; resetAndReload(); });
+
+function wireTripleChip(withEl, withoutEl, key) {
+  withEl.addEventListener('click', () => {
+    state.filters[key] = state.filters[key] === 'with' ? '' : 'with';
+    withEl.classList.toggle('active', state.filters[key] === 'with');
+    withoutEl.classList.remove('active');
+    resetAndReload();
+  });
+  withoutEl.addEventListener('click', () => {
+    state.filters[key] = state.filters[key] === 'without' ? '' : 'without';
+    withoutEl.classList.toggle('active', state.filters[key] === 'without');
+    withEl.classList.remove('active');
+    resetAndReload();
+  });
+}
+wireTripleChip(chipMusicWith, chipMusicWithout, 'music');
+wireTripleChip(chipSpeechWith, chipSpeechWithout, 'speech');
+
+ambianceFilter.addEventListener('change', e => { state.filters.ambiance = e.target.value; resetAndReload(); });
+movementFilter.addEventListener('change', e => { state.filters.movement = e.target.value; resetAndReload(); });
+lightingFilter.addEventListener('change', e => { state.filters.lighting = e.target.value; resetAndReload(); });
+locationFilter.addEventListener('change', e => { state.filters.location = e.target.value; resetAndReload(); });
+durationFilter.addEventListener('change', e => { state.filters.duration = e.target.value; resetAndReload(); });
+statusFilter.addEventListener('change', e => { state.filters.status = e.target.value; resetAndReload(); });
+analysisFilter.addEventListener('change', e => { state.filters.analysis = e.target.value; resetAndReload(); });
+
+resetFiltersBtn.addEventListener('click', () => {
+  state.filters = { ...DEFAULT_FILTERS };
+  syncFiltersToUI();
+  updateMultiSelectBtn('emotions');
+  updateMultiSelectBtn('tags');
+  populateMultiSelect('emotions', state.catalog.emotions);
+  populateMultiSelect('tags', state.catalog.tags);
+  resetAndReload();
+});
+
+toggleSecondaryBtn && toggleSecondaryBtn.addEventListener('click', () => {
+  const sec = document.querySelector('.filters-row.secondary');
+  sec.classList.toggle('open');
+  toggleSecondaryBtn.textContent = sec.classList.contains('open') ? 'Moins de filtres ↑' : 'Plus de filtres ↓';
+});
 
 // ---------- SELECTION ----------
 function toggleSelection(id) {
   if (state.selection.has(id)) state.selection.delete(id);
   else state.selection.add(id);
   updateSelectionBar();
-  // re-render juste la carte concernée
   const card = gallery.querySelector(`.card[data-id="${id}"]`);
   if (card) {
     card.classList.toggle('selected', state.selection.has(id));
@@ -383,15 +812,12 @@ function toggleSelection(id) {
 
 function updateSelectionBar() {
   const n = state.selection.size;
-  if (n === 0) {
-    selectionBar.classList.remove('active');
-    return;
-  }
+  if (n === 0) { selectionBar.classList.remove('active'); return; }
   selectionBar.classList.add('active');
   selCount.textContent = n;
   let total = 0;
   for (const id of state.selection) {
-    const c = state.allClips.find(x => x.id === id);
+    const c = state.clips.find(x => x.id === id);
     if (c?.duration_seconds) total += Number(c.duration_seconds);
   }
   selMeta.textContent = `${fmtDuration(total)} au total`;
@@ -407,36 +833,40 @@ sendToEditBtn.addEventListener('click', sendToSomaticaEdit);
 
 // ---------- MODAL ----------
 function openModal(id) {
-  const c = state.allClips.find(x => x.id === id);
+  const c = state.clips.find(x => x.id === id);
   if (!c) return;
   state.currentModalId = id;
   modalTitle.textContent = c.ambiance ? c.ambiance : (c.file_name || 'Clip');
   modalVideo.src = c.r2_url;
   modalVideo.currentTime = 0;
 
-  // body : formulaire éditable
   modalBody.innerHTML = '';
   const rows = [
     { label: 'Durée', value: fmtDuration(c.duration_seconds) },
     { label: 'Dimensions', value: c.width && c.height ? `${c.width}×${c.height}` : '—' },
     { label: 'Date source', value: fmtDate(c.created_at_source) },
+    { label: 'Qualité', value: c.quality_score != null ? `${c.quality_score}/10` : '—' },
+    { label: 'Personnes', value: c.persons_count != null ? `${c.persons_count}` : '—' },
+    { label: 'Musique', value: c.music_present ? 'oui' : (c.music_present === false ? 'non' : '—') },
+    { label: 'Paroles', value: c.has_speech ? 'oui' : (c.has_speech === false ? 'non' : '—') },
+    { label: 'Intensité', value: c.emotional_intensity || '—' },
+    { label: 'Émotions', value: (c.emotional_states || []).join(', ') || '—' },
+    { label: 'Usable Reel', value: c.usable_for_reel ? '✨ oui' : 'non' },
     { label: 'Statut', value: c.status || 'available' },
     { label: 'Analyse', value: c.analysis_status || 'pending' },
   ];
   for (const r of rows) {
     const row = document.createElement('div');
     row.className = 'row';
-    row.innerHTML = `<span class="label">${r.label}</span><span class="value">${r.value}</span>`;
+    row.innerHTML = `<span class="label">${r.label}</span><span class="value">${escapeHtml(r.value)}</span>`;
     modalBody.appendChild(row);
   }
 
-  // description éditable
   addEditableField('Description', 'description_short', c.description_short, false);
   addEditableField('Ambiance', 'ambiance', c.ambiance, false);
   addEditableField('Tags (séparés par virgule)', 'tags', (c.tags || []).join(', '), false);
   addEditableField('Notes', 'notes', c.notes, true);
 
-  // actions
   modalActions.innerHTML = '';
   const actions = [];
   actions.push({ label: '💾 Enregistrer', cls: 'primary', onClick: () => saveModal(c.id) });
@@ -499,11 +929,9 @@ async function saveModal(id) {
   patch.updated_at = new Date().toISOString();
   const { error } = await sb.from('video_library').update(patch).eq('id', id);
   if (error) { toast(error.message, 'error'); return; }
-  const idx = state.allClips.findIndex(x => x.id === id);
-  if (idx > -1) Object.assign(state.allClips[idx], patch);
+  const idx = state.clips.findIndex(x => x.id === id);
+  if (idx > -1) Object.assign(state.clips[idx], patch);
   toast('Enregistré', 'success');
-  buildAmbianceOptions();
-  applyFilters();
 }
 
 async function setStatus(id, status) {
@@ -512,11 +940,11 @@ async function setStatus(id, status) {
     .update({ status, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) { toast(error.message, 'error'); return; }
-  const idx = state.allClips.findIndex(x => x.id === id);
-  if (idx > -1) state.allClips[idx].status = status;
+  const idx = state.clips.findIndex(x => x.id === id);
+  if (idx > -1) state.clips[idx].status = status;
   toast(`Statut → ${status}`, 'success');
   closeModal();
-  applyFilters();
+  resetAndReload();
 }
 
 async function reanalyze(id) {
@@ -525,13 +953,13 @@ async function reanalyze(id) {
     .update({ analysis_status: 'pending', analyzed_at: null, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) { toast(error.message, 'error'); return; }
-  const idx = state.allClips.findIndex(x => x.id === id);
+  const idx = state.clips.findIndex(x => x.id === id);
   if (idx > -1) {
-    state.allClips[idx].analysis_status = 'pending';
-    state.allClips[idx].analyzed_at = null;
+    state.clips[idx].analysis_status = 'pending';
+    state.clips[idx].analyzed_at = null;
   }
   toast('Remis en file d\'analyse', 'success');
-  applyFilters();
+  resetAndReload();
 }
 
 // ---------- SEND TO SOMATICAEDIT ----------
@@ -539,8 +967,7 @@ async function sendToSomaticaEdit() {
   const ids = [...state.selection];
   if (!ids.length) return;
 
-  // Reconstruire la liste dans l'ordre d'affichage courant pour garder la cohérence
-  const ordered = state.filtered.filter(c => state.selection.has(c.id));
+  const ordered = state.clips.filter(c => state.selection.has(c.id));
   if (!ordered.length) { toast('Sélection vide', 'error'); return; }
 
   const now = Date.now();
@@ -564,7 +991,7 @@ async function sendToSomaticaEdit() {
         width: 1080, height: 1920,
         opacity: 1, rotation: 0,
         muted: true, loop: false,
-        video_id: c.id, // trace vers video_library
+        video_id: c.id,
       },
     }],
   }));
@@ -590,16 +1017,73 @@ async function sendToSomaticaEdit() {
 
   if (error) { toast(error.message, 'error'); return; }
 
-  // Marquer clips comme in_use (optionnel - laisse en available pour le moment pour tester)
-  // await sb.from('video_library').update({ status: 'in_use' }).in('id', ids);
-
   toast(`Projet ${project_id} créé — ${ordered.length} clips`, 'success');
-  // Ouvre SomaticaEdit dans un nouvel onglet (à adapter selon URL réelle)
   window.open(`https://edit.somatica-feed.com/?project=${project_id}`, '_blank');
   state.selection.clear();
   updateSelectionBar();
   renderGallery();
 }
+
+// ---------- ZOOM / DENSITÉ GRILLE ----------
+const zoomButtons = document.querySelectorAll('#zoom-control button');
+const COLS_MIN = 1, COLS_MAX = 4;
+const DEFAULT_COLS = window.innerWidth < 768 ? 2 : 3;
+
+function applyCols(cols) {
+  cols = Math.max(COLS_MIN, Math.min(COLS_MAX, parseInt(cols) || DEFAULT_COLS));
+  document.documentElement.style.setProperty('--cols', cols);
+  gallery.dataset.dense = cols >= 4 ? '2' : (cols >= 3 ? '1' : '0');
+  zoomButtons.forEach(b => b.classList.toggle('active', parseInt(b.dataset.cols) === cols));
+  try { localStorage.setItem('library_cols', String(cols)); } catch (e) {}
+  state.cols = cols;
+  return cols;
+}
+
+state.cols = applyCols(parseInt(localStorage.getItem('library_cols')) || DEFAULT_COLS);
+
+zoomButtons.forEach(btn => {
+  btn.addEventListener('click', () => applyCols(btn.dataset.cols));
+});
+
+// Pinch-to-zoom mobile
+let pinchStart = null;
+gallery.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    pinchStart = { dist: Math.hypot(dx, dy), cols: state.cols };
+  }
+}, { passive: true });
+
+gallery.addEventListener('touchmove', (e) => {
+  if (e.touches.length === 2 && pinchStart) {
+    e.preventDefault();
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+    const ratio = dist / pinchStart.dist;
+    let target = pinchStart.cols;
+    if (ratio > 1.25) target = pinchStart.cols - 1;
+    else if (ratio > 1.6) target = pinchStart.cols - 2;
+    else if (ratio < 0.8) target = pinchStart.cols + 1;
+    else if (ratio < 0.5) target = pinchStart.cols + 2;
+    if (target !== state.cols) applyCols(target);
+  }
+}, { passive: false });
+
+gallery.addEventListener('touchend', (e) => {
+  if (e.touches.length < 2) pinchStart = null;
+}, { passive: true });
+
+let lastTap = 0;
+gallery.addEventListener('touchend', (e) => {
+  if (e.changedTouches.length !== 1) return;
+  const now = Date.now();
+  if (now - lastTap < 300 && e.target.closest('.card') === null) {
+    applyCols(state.cols === 1 ? 3 : 1);
+  }
+  lastTap = now;
+}, { passive: true });
 
 // ---------- INIT ----------
 checkSession();
