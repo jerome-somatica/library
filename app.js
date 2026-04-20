@@ -1,0 +1,605 @@
+/* ============================================================
+   Somatica Library - app.js
+   Galerie des clips vidéo stockés sur Cloudflare R2
+   Backend : Supabase (table video_library)
+   ============================================================ */
+
+// ---------- CONFIG ----------
+const SUPABASE_URL = 'https://zrdlvoovrnglxcgoyyeb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_ukrn7WQHygY5FUtNiMxxfA_E-esyAUs';
+const JEROME_USER_ID = 'ffaaef6d-7636-417a-837c-7823751adcdd';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+});
+
+// ---------- STATE ----------
+const state = {
+  allClips: [],          // cache complet
+  filtered: [],          // résultat filtré
+  selection: new Set(),  // ids sélectionnés
+  currentModalId: null,
+  session: null,
+  filters: {
+    search: '',
+    duration: '',
+    ambiance: '',
+    status: 'available',
+    analysis: '',
+  },
+};
+
+// ---------- DOM ----------
+const $ = (id) => document.getElementById(id);
+const authScreen = $('auth-screen');
+const app = $('app');
+const emailInput = $('email-input');
+const sendLinkBtn = $('send-link');
+const codeInput = $('code-input');
+const verifyCodeBtn = $('verify-code');
+const changeEmailLink = $('change-email');
+const stepEmail = $('step-email');
+const stepCode = $('step-code');
+const authMsg = $('auth-msg');
+const totalCount = $('total-count');
+const searchInput = $('search-input');
+const durationFilter = $('duration-filter');
+const ambianceFilter = $('ambiance-filter');
+const statusFilter = $('status-filter');
+const analysisFilter = $('analysis-filter');
+const filteredCount = $('filtered-count');
+const gallery = $('gallery');
+const selectionBar = $('selection-bar');
+const selCount = $('sel-count');
+const selMeta = $('sel-meta');
+const clearSelectionBtn = $('clear-selection');
+const sendToEditBtn = $('send-to-edit');
+const modalBg = $('modal-bg');
+const modalTitle = $('modal-title');
+const modalVideo = $('modal-video');
+const modalBody = $('modal-body');
+const modalActions = $('modal-actions');
+const modalClose = $('modal-close');
+
+// ---------- UTILS ----------
+function toast(msg, kind = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${kind}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+function fmtDuration(sec) {
+  if (sec == null) return '—';
+  sec = Math.round(Number(sec));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}m${s.toString().padStart(2, '0')}`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch { return iso; }
+}
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// ---------- AUTH ----------
+async function checkSession() {
+  const { data: { session } } = await sb.auth.getSession();
+  state.session = session;
+  if (session) {
+    authScreen.style.display = 'none';
+    app.style.display = 'block';
+    await loadClips();
+  } else {
+    authScreen.style.display = 'flex';
+    app.style.display = 'none';
+  }
+}
+
+let pendingEmail = '';
+
+sendLinkBtn.addEventListener('click', async () => {
+  const email = emailInput.value.trim();
+  if (!email) {
+    authMsg.className = 'msg error';
+    authMsg.textContent = 'Entre ton email';
+    return;
+  }
+  sendLinkBtn.disabled = true;
+  sendLinkBtn.textContent = 'Envoi...';
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: true,
+      emailRedirectTo: window.location.origin + window.location.pathname,
+    },
+  });
+  sendLinkBtn.disabled = false;
+  sendLinkBtn.textContent = 'Recevoir un code';
+  if (error) {
+    authMsg.className = 'msg error';
+    authMsg.textContent = error.message;
+  } else {
+    pendingEmail = email;
+    stepEmail.style.display = 'none';
+    stepCode.style.display = 'block';
+    authMsg.className = 'msg';
+    authMsg.textContent = `Code envoyé à ${email}. Saisis-le ci-dessus.`;
+    setTimeout(() => codeInput.focus(), 100);
+  }
+});
+
+verifyCodeBtn.addEventListener('click', async () => {
+  const code = codeInput.value.trim();
+  if (!code || !pendingEmail) {
+    authMsg.className = 'msg error';
+    authMsg.textContent = 'Saisis le code reçu par email';
+    return;
+  }
+  verifyCodeBtn.disabled = true;
+  verifyCodeBtn.textContent = 'Vérification...';
+  const { error } = await sb.auth.verifyOtp({
+    email: pendingEmail,
+    token: code,
+    type: 'email',
+  });
+  verifyCodeBtn.disabled = false;
+  verifyCodeBtn.textContent = 'Se connecter';
+  if (error) {
+    authMsg.className = 'msg error';
+    authMsg.textContent = error.message;
+  } else {
+    authMsg.className = 'msg';
+    authMsg.textContent = 'Connexion réussie';
+  }
+});
+
+codeInput && codeInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') verifyCodeBtn.click();
+});
+
+emailInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') sendLinkBtn.click();
+});
+
+changeEmailLink && changeEmailLink.addEventListener('click', e => {
+  e.preventDefault();
+  pendingEmail = '';
+  stepCode.style.display = 'none';
+  stepEmail.style.display = 'block';
+  authMsg.textContent = '';
+  emailInput.focus();
+});
+
+sb.auth.onAuthStateChange((_event, session) => {
+  state.session = session;
+  if (session) {
+    authScreen.style.display = 'none';
+    app.style.display = 'block';
+    if (!state.allClips.length) loadClips();
+  } else {
+    authScreen.style.display = 'flex';
+    app.style.display = 'none';
+  }
+});
+
+// ---------- DATA ----------
+async function loadClips() {
+  gallery.innerHTML = '<div class="loading">Chargement des clips...</div>';
+  const { data, error } = await sb
+    .from('video_library')
+    .select('*')
+    .order('created_at_source', { ascending: false, nullsFirst: false })
+    .limit(5000);
+  if (error) {
+    console.error(error);
+    gallery.innerHTML = `<div class="empty-state"><h2>Erreur</h2><p>${error.message}</p></div>`;
+    return;
+  }
+  state.allClips = data || [];
+  totalCount.textContent = `${state.allClips.length} clips`;
+  buildAmbianceOptions();
+  applyFilters();
+}
+
+function buildAmbianceOptions() {
+  const set = new Set();
+  for (const c of state.allClips) {
+    if (c.ambiance) set.add(c.ambiance);
+  }
+  const sorted = [...set].sort();
+  const current = ambianceFilter.value;
+  ambianceFilter.innerHTML = '<option value="">Toutes ambiances</option>' +
+    sorted.map(a => `<option value="${a}">${a}</option>`).join('');
+  ambianceFilter.value = current;
+}
+
+// ---------- FILTERS ----------
+function applyFilters() {
+  const { search, duration, ambiance, status, analysis } = state.filters;
+  const q = search.toLowerCase().trim();
+
+  state.filtered = state.allClips.filter(c => {
+    // status
+    if (status && (c.status || 'available') !== status) return false;
+    // analysis
+    if (analysis && (c.analysis_status || 'pending') !== analysis) return false;
+    // ambiance
+    if (ambiance && c.ambiance !== ambiance) return false;
+    // duration
+    if (duration) {
+      const d = c.duration_seconds;
+      if (d == null) return false;
+      if (duration === 'short' && d >= 15) return false;
+      if (duration === 'medium' && (d < 15 || d >= 60)) return false;
+      if (duration === 'long' && d < 60) return false;
+    }
+    // search
+    if (q) {
+      const hay = [
+        c.description_short, c.notes, c.ambiance, c.movement, c.lighting,
+        c.file_name, c.transcript_text,
+        ...(c.tags || []),
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  filteredCount.textContent = `${state.filtered.length} affichés`;
+  renderGallery();
+}
+
+searchInput.addEventListener('input', debounce(e => {
+  state.filters.search = e.target.value;
+  applyFilters();
+}, 250));
+
+durationFilter.addEventListener('change', e => { state.filters.duration = e.target.value; applyFilters(); });
+ambianceFilter.addEventListener('change', e => { state.filters.ambiance = e.target.value; applyFilters(); });
+statusFilter.addEventListener('change', e => { state.filters.status = e.target.value; applyFilters(); });
+analysisFilter.addEventListener('change', e => { state.filters.analysis = e.target.value; applyFilters(); });
+
+// init select default (status=available déjà sélectionné dans HTML)
+statusFilter.value = 'available';
+
+// ---------- GALLERY ----------
+function renderGallery() {
+  if (!state.filtered.length) {
+    gallery.innerHTML = '<div class="empty-state"><h2>Aucun clip</h2><p>Ajuste tes filtres ou attends l\'analyse.</p></div>';
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  for (const c of state.filtered) {
+    frag.appendChild(makeCard(c));
+  }
+  gallery.innerHTML = '';
+  gallery.appendChild(frag);
+}
+
+function makeCard(c) {
+  const card = document.createElement('div');
+  const classes = ['card'];
+  if (state.selection.has(c.id)) classes.push('selected');
+  if (c.status === 'archived') classes.push('archived');
+  if (c.status === 'rejected') classes.push('rejected');
+  card.className = classes.join(' ');
+  card.dataset.id = c.id;
+
+  // zone thumb
+  const thumb = document.createElement('div');
+  thumb.className = 'thumb';
+  // Vidéo lazy-loadée : poster statique via thumbnail du premier frame (video sans autoplay)
+  const video = document.createElement('video');
+  video.src = c.r2_url;
+  video.preload = 'metadata';
+  video.muted = true;
+  video.playsInline = true;
+  // preview au hover
+  video.addEventListener('mouseenter', () => { video.play().catch(() => {}); });
+  video.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
+  thumb.appendChild(video);
+
+  const playIcon = document.createElement('div');
+  playIcon.className = 'play-icon';
+  thumb.appendChild(playIcon);
+
+  // badge analyse
+  const as = c.analysis_status || 'pending';
+  if (as !== 'done') {
+    const b = document.createElement('div');
+    b.className = `status-badge ${as}`;
+    b.textContent = as === 'pending' ? 'à analyser' : as === 'in_progress' ? 'analyse…' : 'échec';
+    thumb.appendChild(b);
+  }
+
+  // durée
+  const dur = document.createElement('div');
+  dur.className = 'duration';
+  dur.textContent = fmtDuration(c.duration_seconds);
+  thumb.appendChild(dur);
+
+  // checkbox sélection
+  const cb = document.createElement('div');
+  cb.className = 'select-checkbox';
+  cb.textContent = state.selection.has(c.id) ? '✓' : '';
+  cb.addEventListener('click', e => {
+    e.stopPropagation();
+    toggleSelection(c.id);
+  });
+  thumb.appendChild(cb);
+
+  card.appendChild(thumb);
+
+  // info
+  const info = document.createElement('div');
+  info.className = 'info';
+  const amb = document.createElement('div');
+  amb.className = 'amb';
+  amb.textContent = c.ambiance || (c.description_short ? c.description_short.slice(0, 40) : 'Non analysé');
+  info.appendChild(amb);
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  const bits = [];
+  if (c.persons_count != null) bits.push(c.persons_count === 0 ? 'pas de personne' : `${c.persons_count} pers.`);
+  if (c.movement) bits.push(c.movement);
+  if (c.lighting) bits.push(c.lighting);
+  if (!bits.length && c.created_at_source) bits.push(fmtDate(c.created_at_source));
+  meta.textContent = bits.slice(0, 2).join(' · ');
+  info.appendChild(meta);
+
+  card.appendChild(info);
+
+  // click sur carte (hors checkbox) → modal
+  card.addEventListener('click', () => openModal(c.id));
+
+  return card;
+}
+
+// ---------- SELECTION ----------
+function toggleSelection(id) {
+  if (state.selection.has(id)) state.selection.delete(id);
+  else state.selection.add(id);
+  updateSelectionBar();
+  // re-render juste la carte concernée
+  const card = gallery.querySelector(`.card[data-id="${id}"]`);
+  if (card) {
+    card.classList.toggle('selected', state.selection.has(id));
+    const cb = card.querySelector('.select-checkbox');
+    if (cb) cb.textContent = state.selection.has(id) ? '✓' : '';
+  }
+}
+
+function updateSelectionBar() {
+  const n = state.selection.size;
+  if (n === 0) {
+    selectionBar.classList.remove('active');
+    return;
+  }
+  selectionBar.classList.add('active');
+  selCount.textContent = n;
+  let total = 0;
+  for (const id of state.selection) {
+    const c = state.allClips.find(x => x.id === id);
+    if (c?.duration_seconds) total += Number(c.duration_seconds);
+  }
+  selMeta.textContent = `${fmtDuration(total)} au total`;
+}
+
+clearSelectionBtn.addEventListener('click', () => {
+  state.selection.clear();
+  updateSelectionBar();
+  renderGallery();
+});
+
+sendToEditBtn.addEventListener('click', sendToSomaticaEdit);
+
+// ---------- MODAL ----------
+function openModal(id) {
+  const c = state.allClips.find(x => x.id === id);
+  if (!c) return;
+  state.currentModalId = id;
+  modalTitle.textContent = c.ambiance ? c.ambiance : (c.file_name || 'Clip');
+  modalVideo.src = c.r2_url;
+  modalVideo.currentTime = 0;
+
+  // body : formulaire éditable
+  modalBody.innerHTML = '';
+  const rows = [
+    { label: 'Durée', value: fmtDuration(c.duration_seconds) },
+    { label: 'Dimensions', value: c.width && c.height ? `${c.width}×${c.height}` : '—' },
+    { label: 'Date source', value: fmtDate(c.created_at_source) },
+    { label: 'Statut', value: c.status || 'available' },
+    { label: 'Analyse', value: c.analysis_status || 'pending' },
+  ];
+  for (const r of rows) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<span class="label">${r.label}</span><span class="value">${r.value}</span>`;
+    modalBody.appendChild(row);
+  }
+
+  // description éditable
+  addEditableField('Description', 'description_short', c.description_short, false);
+  addEditableField('Ambiance', 'ambiance', c.ambiance, false);
+  addEditableField('Tags (séparés par virgule)', 'tags', (c.tags || []).join(', '), false);
+  addEditableField('Notes', 'notes', c.notes, true);
+
+  // actions
+  modalActions.innerHTML = '';
+  const actions = [];
+  actions.push({ label: '💾 Enregistrer', cls: 'primary', onClick: () => saveModal(c.id) });
+  if ((c.status || 'available') !== 'archived') actions.push({ label: '📦 Archiver', cls: '', onClick: () => setStatus(c.id, 'archived') });
+  if ((c.status || 'available') !== 'rejected') actions.push({ label: '🚫 Rejeter', cls: 'danger', onClick: () => setStatus(c.id, 'rejected') });
+  if ((c.status || 'available') !== 'available') actions.push({ label: '↩︎ Réactiver', cls: '', onClick: () => setStatus(c.id, 'available') });
+  actions.push({ label: '🔄 Re-analyser', cls: '', onClick: () => reanalyze(c.id) });
+  actions.push({ label: 'Fermer', cls: '', onClick: closeModal });
+
+  for (const a of actions) {
+    const btn = document.createElement('button');
+    btn.className = `btn ${a.cls}`;
+    btn.textContent = a.label;
+    btn.addEventListener('click', a.onClick);
+    modalActions.appendChild(btn);
+  }
+
+  modalBg.classList.add('active');
+}
+
+function addEditableField(label, key, value, multi) {
+  const row = document.createElement('div');
+  row.style.marginTop = '12px';
+  const lbl = document.createElement('div');
+  lbl.style.cssText = 'font-size:12px;font-weight:500;color:rgba(235,211,160,0.6);margin-bottom:4px;';
+  lbl.textContent = label;
+  row.appendChild(lbl);
+  const input = multi ? document.createElement('textarea') : document.createElement('input');
+  input.dataset.key = key;
+  input.value = value || '';
+  row.appendChild(input);
+  modalBody.appendChild(row);
+}
+
+function closeModal() {
+  modalBg.classList.remove('active');
+  modalVideo.pause();
+  modalVideo.src = '';
+  state.currentModalId = null;
+}
+
+modalClose.addEventListener('click', closeModal);
+modalBg.addEventListener('click', e => { if (e.target === modalBg) closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && modalBg.classList.contains('active')) closeModal();
+});
+
+async function saveModal(id) {
+  const inputs = modalBody.querySelectorAll('[data-key]');
+  const patch = {};
+  for (const inp of inputs) {
+    const key = inp.dataset.key;
+    let v = inp.value.trim();
+    if (key === 'tags') {
+      patch.tags = v ? v.split(',').map(s => s.trim()).filter(Boolean) : [];
+    } else {
+      patch[key] = v || null;
+    }
+  }
+  patch.updated_at = new Date().toISOString();
+  const { error } = await sb.from('video_library').update(patch).eq('id', id);
+  if (error) { toast(error.message, 'error'); return; }
+  const idx = state.allClips.findIndex(x => x.id === id);
+  if (idx > -1) Object.assign(state.allClips[idx], patch);
+  toast('Enregistré', 'success');
+  buildAmbianceOptions();
+  applyFilters();
+}
+
+async function setStatus(id, status) {
+  const { error } = await sb
+    .from('video_library')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) { toast(error.message, 'error'); return; }
+  const idx = state.allClips.findIndex(x => x.id === id);
+  if (idx > -1) state.allClips[idx].status = status;
+  toast(`Statut → ${status}`, 'success');
+  closeModal();
+  applyFilters();
+}
+
+async function reanalyze(id) {
+  const { error } = await sb
+    .from('video_library')
+    .update({ analysis_status: 'pending', analyzed_at: null, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) { toast(error.message, 'error'); return; }
+  const idx = state.allClips.findIndex(x => x.id === id);
+  if (idx > -1) {
+    state.allClips[idx].analysis_status = 'pending';
+    state.allClips[idx].analyzed_at = null;
+  }
+  toast('Remis en file d\'analyse', 'success');
+  applyFilters();
+}
+
+// ---------- SEND TO SOMATICAEDIT ----------
+async function sendToSomaticaEdit() {
+  const ids = [...state.selection];
+  if (!ids.length) return;
+
+  // Reconstruire la liste dans l'ordre d'affichage courant pour garder la cohérence
+  const ordered = state.filtered.filter(c => state.selection.has(c.id));
+  if (!ordered.length) { toast('Sélection vide', 'error'); return; }
+
+  const now = Date.now();
+  const project_id = `p_REEL_DRAFT_${now}`;
+  const scenes = ordered.map((c, i) => ({
+    id: `scene_${i + 1}`,
+    name: c.ambiance || c.description_short?.slice(0, 30) || `Scène ${i + 1}`,
+    format: 'story',
+    background: { type: 'color', color: '#0d1e25' },
+    duration: Math.min(Number(c.duration_seconds) || 6, 10),
+    layers: [{
+      id: `l_v${i + 1}`,
+      type: 'video',
+      name: 'Clip',
+      visible: true,
+      locked: false,
+      x: 540, y: 960,
+      timeline: { start: 0, end: Math.min(Number(c.duration_seconds) || 6, 10) },
+      props: {
+        url: c.r2_url,
+        width: 1080, height: 1920,
+        opacity: 1, rotation: 0,
+        muted: true, loop: false,
+        video_id: c.id, // trace vers video_library
+      },
+    }],
+  }));
+
+  const data = {
+    version: '1.0',
+    id: project_id,
+    name: `Reel brouillon ${new Date().toLocaleDateString('fr-FR')}`,
+    format: 'reel',
+    scenes,
+    source: 'library',
+  };
+
+  const { error } = await sb.from('edit_projects').upsert({
+    user_id: JEROME_USER_ID,
+    project_id,
+    name: data.name,
+    format: 'reel',
+    data,
+    source: 'library',
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id,project_id' });
+
+  if (error) { toast(error.message, 'error'); return; }
+
+  // Marquer clips comme in_use (optionnel - laisse en available pour le moment pour tester)
+  // await sb.from('video_library').update({ status: 'in_use' }).in('id', ids);
+
+  toast(`Projet ${project_id} créé — ${ordered.length} clips`, 'success');
+  // Ouvre SomaticaEdit dans un nouvel onglet (à adapter selon URL réelle)
+  window.open(`https://edit.somatica-feed.com/?project=${project_id}`, '_blank');
+  state.selection.clear();
+  updateSelectionBar();
+  renderGallery();
+}
+
+// ---------- INIT ----------
+checkSession();

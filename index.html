@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0d1e25">
+<title>Somatica Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: 'Inter', sans-serif; background: #0d1e25; color: #ebd3a0; min-height: 100vh; }
+body { padding-bottom: 140px; }
+
+/* Header */
+header {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(13, 30, 37, 0.95); backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(235, 211, 160, 0.15);
+  padding: 14px 20px;
+}
+header .title {
+  font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 500;
+  display: flex; align-items: center; gap: 10px;
+}
+header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
+
+/* Filters bar */
+.filters {
+  padding: 14px 20px;
+  background: rgba(235, 211, 160, 0.03);
+  border-bottom: 1px solid rgba(235, 211, 160, 0.1);
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+}
+.filters input, .filters select {
+  background: rgba(235, 211, 160, 0.08); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.15);
+  padding: 8px 12px; border-radius: 6px; font-size: 14px; font-family: inherit;
+  outline: none; transition: border-color 0.15s;
+}
+.filters input:focus, .filters select:focus { border-color: #ebd3a0; }
+.filters input::placeholder { color: rgba(235, 211, 160, 0.5); }
+.filters input[type="search"] { flex: 1; min-width: 200px; }
+.filters .count-filtered { font-size: 13px; opacity: 0.6; margin-left: auto; }
+
+/* Gallery grid */
+.gallery {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+@media (min-width: 768px) {
+  .gallery { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+}
+
+.card {
+  position: relative; background: #0f2f3a; border-radius: 10px; overflow: hidden;
+  cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+  border: 2px solid transparent;
+}
+.card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.4); }
+.card.selected { border-color: #ebd3a0; box-shadow: 0 0 0 2px rgba(235, 211, 160, 0.4); }
+.card.archived { opacity: 0.45; }
+.card.rejected { opacity: 0.35; filter: grayscale(0.8); }
+
+.card .thumb {
+  width: 100%; aspect-ratio: 9/16; background: #000;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px; color: rgba(235,211,160,0.25);
+  position: relative;
+}
+.card .thumb video { width: 100%; height: 100%; object-fit: cover; }
+.card .thumb .play-icon {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 48px; height: 48px; border-radius: 50%;
+  background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.card .thumb .play-icon::after {
+  content: ''; display: block;
+  border-left: 14px solid #ebd3a0;
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  margin-left: 4px;
+}
+.card .duration {
+  position: absolute; bottom: 8px; right: 8px;
+  background: rgba(0,0,0,0.75); color: #ebd3a0;
+  padding: 2px 6px; border-radius: 4px;
+  font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.card .status-badge {
+  position: absolute; top: 8px; right: 8px;
+  padding: 2px 8px; border-radius: 4px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.card .status-badge.pending { background: rgba(255, 200, 100, 0.85); color: #3a2a10; }
+.card .status-badge.in_progress { background: rgba(100, 180, 255, 0.85); color: #0a1d2a; }
+.card .status-badge.done { display: none; }
+.card .status-badge.failed { background: rgba(255, 100, 100, 0.85); color: #3a0a0a; }
+.card .info {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.card .info .amb { color: #ebd3a0; font-weight: 500; text-transform: capitalize; }
+.card .info .meta { color: rgba(235,211,160,0.55); font-size: 11px; margin-top: 2px; }
+
+/* Selection checkbox overlay */
+.card .select-checkbox {
+  position: absolute; top: 8px; left: 8px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(0,0,0,0.5); border: 2px solid #ebd3a0;
+  display: flex; align-items: center; justify-content: center;
+  color: #ebd3a0; font-size: 14px; font-weight: bold;
+  cursor: pointer;
+  transition: all 0.15s;
+  z-index: 2;
+}
+.card.selected .select-checkbox { background: #ebd3a0; color: #0f2f3a; }
+
+/* Modal */
+.modal-bg {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+  display: none; z-index: 100; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-bg.active { display: flex; }
+.modal {
+  background: #0f2f3a; border-radius: 14px; max-width: 720px; width: 100%;
+  max-height: 90vh; overflow: auto;
+  border: 1px solid rgba(235,211,160,0.2);
+}
+.modal-header { padding: 16px 20px; border-bottom: 1px solid rgba(235,211,160,0.1); display: flex; justify-content: space-between; align-items: center; }
+.modal-header h2 { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 500; }
+.modal-header .close {
+  background: none; border: none; color: #ebd3a0; font-size: 28px; cursor: pointer;
+  width: 36px; height: 36px; border-radius: 50%;
+}
+.modal-header .close:hover { background: rgba(235,211,160,0.1); }
+.modal-video {
+  width: 100%; aspect-ratio: 9/16; max-height: 60vh;
+  background: #000; display: flex; align-items: center; justify-content: center;
+}
+.modal-video video { width: 100%; height: 100%; object-fit: contain; }
+.modal-body { padding: 20px; }
+.modal-body .row { display: flex; gap: 12px; margin-bottom: 10px; font-size: 14px; }
+.modal-body .row .label { font-weight: 500; color: rgba(235,211,160,0.6); min-width: 100px; }
+.modal-body .row .value { flex: 1; }
+.modal-body textarea, .modal-body input {
+  width: 100%; background: rgba(235, 211, 160, 0.08); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.15);
+  padding: 8px 10px; border-radius: 6px; font-size: 14px; font-family: inherit;
+  outline: none;
+}
+.modal-body textarea { min-height: 60px; resize: vertical; }
+.modal-actions { padding: 14px 20px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; border-top: 1px solid rgba(235,211,160,0.1); }
+button.btn {
+  background: rgba(235, 211, 160, 0.1); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.25); cursor: pointer;
+  padding: 9px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  font-family: inherit; transition: all 0.15s;
+}
+button.btn:hover { background: rgba(235, 211, 160, 0.2); border-color: rgba(235, 211, 160, 0.4); }
+button.btn.primary { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+button.btn.primary:hover { background: #d6be8c; }
+button.btn.danger { color: #ff9a9a; border-color: rgba(255, 150, 150, 0.3); }
+button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
+
+/* Auth screen */
+.auth-screen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.auth-box {
+  background: #0f2f3a; padding: 40px 30px; border-radius: 14px;
+  max-width: 420px; width: 100%; border: 1px solid rgba(235,211,160,0.15);
+}
+.auth-box h1 {
+  font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 500; margin-bottom: 8px;
+}
+.auth-box p.subtitle { color: rgba(235,211,160,0.6); margin-bottom: 24px; font-size: 14px; }
+.auth-box input { width: 100%; margin-bottom: 14px; padding: 12px 14px; font-size: 15px;
+  background: rgba(235, 211, 160, 0.08); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.15); border-radius: 8px; outline: none;
+}
+.auth-box button { width: 100%; padding: 12px; font-size: 15px; font-weight: 500;
+  background: #ebd3a0; color: #0f2f3a; border: none; border-radius: 8px; cursor: pointer;
+}
+.auth-box button:hover { background: #d6be8c; }
+.auth-box .msg { font-size: 13px; margin-top: 14px; color: rgba(235,211,160,0.7); text-align: center; }
+.auth-box .msg.error { color: #ff9a9a; }
+
+/* Selection bar (bottom) */
+.selection-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: rgba(13, 30, 37, 0.98); backdrop-filter: blur(10px);
+  border-top: 2px solid #ebd3a0;
+  padding: 14px 20px; display: none; z-index: 40;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+}
+.selection-bar.active { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.selection-bar .count { font-weight: 600; font-size: 16px; }
+.selection-bar .meta { opacity: 0.7; font-size: 13px; }
+.selection-bar .actions { margin-left: auto; display: flex; gap: 10px; }
+
+/* Loading */
+.loading {
+  text-align: center; padding: 60px 20px; color: rgba(235,211,160,0.5);
+  font-style: italic;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center; padding: 80px 20px; color: rgba(235,211,160,0.5);
+}
+.empty-state h2 { font-family: 'Cormorant Garamond', serif; font-size: 24px; margin-bottom: 10px; color: #ebd3a0; }
+
+/* Toast */
+.toast {
+  position: fixed; top: 20px; right: 20px; z-index: 200;
+  background: rgba(15, 47, 58, 0.95); backdrop-filter: blur(10px);
+  border: 1px solid rgba(235, 211, 160, 0.3); border-radius: 8px;
+  padding: 12px 18px; font-size: 14px; color: #ebd3a0;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  animation: slideIn 0.2s ease-out;
+}
+.toast.error { border-color: rgba(255, 150, 150, 0.4); color: #ff9a9a; }
+.toast.success { border-color: rgba(150, 220, 150, 0.4); color: #a8e6a8; }
+@keyframes slideIn { from { transform: translateX(120%); } to { transform: translateX(0); } }
+</style>
+</head>
+<body>
+
+<div id="auth-screen" class="auth-screen" style="display:none">
+  <div class="auth-box">
+    <h1>Somatica Library</h1>
+    <p class="subtitle">Ta banque de clips vidéo pour les Reels</p>
+    <div id="step-email">
+      <input type="email" id="email-input" placeholder="ton@email.com" autocomplete="email">
+      <button id="send-link">Recevoir un code</button>
+    </div>
+    <div id="step-code" style="display:none">
+      <input type="text" id="code-input" placeholder="Code à 8 chiffres" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+      <button id="verify-code">Se connecter</button>
+      <div style="text-align:center;margin-top:10px;"><a href="#" id="change-email" style="color:rgba(235,211,160,0.6);font-size:13px;text-decoration:none;">Changer d'email</a></div>
+    </div>
+    <div class="msg" id="auth-msg"></div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <header>
+    <div class="title">
+      Somatica Library
+      <span class="count" id="total-count">chargement...</span>
+    </div>
+  </header>
+
+  <div class="filters">
+    <input type="search" id="search-input" placeholder="Rechercher dans les descriptions et tags...">
+    <select id="duration-filter">
+      <option value="">Toutes durées</option>
+      <option value="short">Courte (0-15s)</option>
+      <option value="medium">Moyenne (15-60s)</option>
+      <option value="long">Longue (60s+)</option>
+    </select>
+    <select id="ambiance-filter">
+      <option value="">Toutes ambiances</option>
+    </select>
+    <select id="status-filter">
+      <option value="available">Dispo</option>
+      <option value="in_use">Utilisé</option>
+      <option value="archived">Archivé</option>
+      <option value="rejected">Rejeté</option>
+      <option value="">Tous</option>
+    </select>
+    <select id="analysis-filter">
+      <option value="">Toutes analyses</option>
+      <option value="done">Analysées</option>
+      <option value="pending">En attente</option>
+      <option value="in_progress">En cours</option>
+      <option value="failed">Échec</option>
+    </select>
+    <span class="count-filtered" id="filtered-count"></span>
+  </div>
+
+  <div class="gallery" id="gallery">
+    <div class="loading">Chargement des clips...</div>
+  </div>
+</div>
+
+<div class="selection-bar" id="selection-bar">
+  <div>
+    <div class="count"><span id="sel-count">0</span> clips sélectionnés</div>
+    <div class="meta" id="sel-meta">0 sec au total</div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="clear-selection">Vider</button>
+    <button class="btn primary" id="send-to-edit">Envoyer vers SomaticaEdit</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Clip</h2>
+      <button class="close" id="modal-close">&times;</button>
+    </div>
+    <div class="modal-video">
+      <video id="modal-video" controls playsinline></video>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-actions" id="modal-actions"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script>
+</body>
+</html>
