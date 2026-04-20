@@ -44,16 +44,44 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
 .filters input[type="search"] { flex: 1; min-width: 200px; }
 .filters .count-filtered { font-size: 13px; opacity: 0.6; margin-left: auto; }
 
-/* Gallery grid */
+/* Zoom control (segmented buttons) */
+.zoom-control {
+  display: inline-flex; gap: 2px;
+  background: rgba(235,211,160,0.08);
+  border: 1px solid rgba(235,211,160,0.12);
+  border-radius: 8px; padding: 2px;
+}
+.zoom-control button {
+  background: transparent; border: 0; color: rgba(235,211,160,0.55);
+  padding: 6px 10px; font-size: 13px; font-weight: 600;
+  font-family: inherit; border-radius: 6px; cursor: pointer;
+  min-width: 34px; transition: background 0.12s, color 0.12s;
+}
+.zoom-control button.active { background: rgba(235,211,160,0.22); color: #ebd3a0; }
+.zoom-control button:active { transform: scale(0.95); }
+
+/* Gallery grid — piloté par --cols */
+:root { --cols: 3; --gap: 12px; }
+@media (max-width: 767px) { :root { --cols: 2; --gap: 8px; } }
+
 .gallery {
   padding: 16px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(var(--cols), 1fr);
+  gap: var(--gap);
+  touch-action: pan-y; /* permet le pinch sur la grille */
 }
 @media (min-width: 768px) {
-  .gallery { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .gallery { padding: 20px; --gap: 14px; }
 }
+
+/* Adaptation des cards quand la grille est dense (3+ colonnes) */
+.gallery[data-dense="1"] .card .info { padding: 6px 8px; font-size: 11px; }
+.gallery[data-dense="1"] .card .info .meta { display: none; }
+.gallery[data-dense="2"] .card .info { display: none; }
+.gallery[data-dense="2"] .card .status-badge { font-size: 8px; padding: 1px 5px; }
+.gallery[data-dense="2"] .card .duration { font-size: 9px; padding: 1px 5px; }
+.gallery[data-dense="2"] .card .select-checkbox { width: 20px; height: 20px; }
 
 .card {
   position: relative; background: #0f2f3a; border-radius: 10px; overflow: hidden;
@@ -284,6 +312,12 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
       <option value="failed">Échec</option>
     </select>
     <span class="count-filtered" id="filtered-count"></span>
+    <div class="zoom-control" id="zoom-control" aria-label="Densité de la grille">
+      <button data-cols="1" title="1 colonne">1</button>
+      <button data-cols="2" title="2 colonnes">2</button>
+      <button data-cols="3" title="3 colonnes">3</button>
+      <button data-cols="4" title="4 colonnes">4</button>
+    </div>
   </div>
 
   <div class="gallery" id="gallery">
