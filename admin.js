@@ -26,6 +26,7 @@
     const views = {
       gallery: $('#view-gallery'),
       faces: $('#view-faces'),
+      dupes: $('#view-dupes'),
       maintenance: $('#view-maintenance'),
     };
 
@@ -40,6 +41,7 @@
 
         // Chargements paresseux à la 1re ouverture
         if (target === 'faces') renderFaces();
+        if (target === 'dupes') renderDupes();
         if (target === 'maintenance') onMaintenanceOpen();
       });
     });
@@ -205,6 +207,315 @@
     });
 
     return card;
+  }
+
+  // ------------------------------------------------------------
+  // Doublons
+  // ------------------------------------------------------------
+  // sb est déclaré dans app.js (top-level const), accessible ici.
+  let dupesState = { loaded: false, loading: false, groups: [] };
+
+  async function renderDupes(force = false) {
+    if (dupesState.loading) return;
+    if (dupesState.loaded && !force) return;
+
+    const list = $('#dupes-list');
+    const status = $('#dupes-status');
+    list.innerHTML = '<div class="maint-status">Chargement des candidats...</div>';
+    status.textContent = '';
+    dupesState.loading = true;
+
+    try {
+      // Récupère TOUT ce qui a size_bytes non null. On regroupe côté client
+      // par (size_bytes, duration_seconds arrondi, created_at_source).
+      let rows = [];
+      let page = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data, error } = await sb
+          .from('video_library')
+          .select('id,r2_url,r2_key,thumbnail_url,file_name,size_bytes,duration_seconds,created_at_source,created_at,content_hash')
+          .not('size_bytes', 'is', null)
+          .range(page * PAGE, page * PAGE + PAGE - 1);
+        if (error) throw error;
+        if (!data || !data.length) break;
+        rows = rows.concat(data);
+        if (data.length < PAGE) break;
+        page++;
+        if (page > 50) break; // garde-fou
+      }
+
+      const groups = new Map();
+      for (const r of rows) {
+        if (r.duration_seconds == null || r.created_at_source == null) continue;
+        const key = `${r.size_bytes}|${Math.round(r.duration_seconds * 10) / 10}|${r.created_at_source}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(r);
+      }
+
+      const candidateGroups = [];
+      for (const [key, items] of groups) {
+        if (items.length > 1) {
+          // Classer par état
+          const allHashed = items.every((i) => i.content_hash);
+          let state = 'pending'; // par défaut : candidats non vérifiés
+          if (allHashed) {
+            const hashes = new Set(items.map((i) => i.content_hash));
+            state = hashes.size === 1 ? 'confirmed' : 'rejected';
+          }
+          candidateGroups.push({ key, items, state });
+        }
+      }
+
+      // Tri : confirmés d'abord, puis pending, puis rejetés
+      const order = { confirmed: 0, pending: 1, rejected: 2 };
+      candidateGroups.sort((a, b) => {
+        if (a.state !== b.state) return order[a.state] - order[b.state];
+        return (b.items[0].size_bytes || 0) - (a.items[0].size_bytes || 0);
+      });
+
+      dupesState.groups = candidateGroups;
+
+      if (!candidateGroups.length) {
+        list.innerHTML = '<div class="maint-status">Aucun candidat doublon trouvé. La bibliothèque est propre.</div>';
+      } else {
+        list.innerHTML = '';
+        candidateGroups.forEach((g) => list.appendChild(renderDupeGroup(g)));
+      }
+
+      const confirmed = candidateGroups.filter((g) => g.state === 'confirmed').length;
+      const pending = candidateGroups.filter((g) => g.state === 'pending').length;
+      const rejected = candidateGroups.filter((g) => g.state === 'rejected').length;
+      const toDelete = candidateGroups
+        .filter((g) => g.state === 'confirmed')
+        .reduce((sum, g) => sum + g.items.length - 1, 0);
+      status.textContent = `${candidateGroups.length} groupes · ${confirmed} confirmés (${toDelete} à supprimer) · ${pending} à hasher · ${rejected} faux positifs`;
+      dupesState.loaded = true;
+    } catch (err) {
+      list.innerHTML = `<div class="maint-status" style="color:#ff9a9a">Erreur : ${escapeHtml(err.message)}</div>`;
+    } finally {
+      dupesState.loading = false;
+    }
+  }
+
+  function renderDupeGroup(group) {
+    const wrap = document.createElement('div');
+    wrap.className = 'dupe-group ' + group.state;
+    wrap.dataset.key = group.key;
+
+    const item0 = group.items[0];
+    const sizeMb = (item0.size_bytes / 1024 / 1024).toFixed(1);
+    const dur = item0.duration_seconds != null ? item0.duration_seconds.toFixed(1) + 's' : '?';
+    const date = item0.created_at_source ? new Date(item0.created_at_source).toLocaleDateString('fr-FR') : '?';
+
+    const badgeLabel = group.state === 'confirmed' ? 'Doublons confirmés'
+      : group.state === 'rejected' ? 'Faux positifs'
+      : 'À hasher';
+
+    // Trouver l'item à garder = celui avec r2_key le plus court OU created_at le plus ancien
+    // Par défaut : garder le premier trié par created_at asc
+    const sorted = [...group.items].sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : Infinity;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : Infinity;
+      return ta - tb;
+    });
+    const keepId = sorted[0].id;
+
+    wrap.innerHTML = `
+      <div class="dupe-group-header">
+        <div class="dupe-group-title">
+          ${sizeMb} Mo · ${dur} · ${date} · ${group.items.length} copies
+        </div>
+        <div class="dupe-group-badge ${group.state}">${escapeHtml(badgeLabel)}</div>
+        <div class="dupe-group-actions">
+          ${group.state === 'pending' ? '<button class="maint-btn" data-action="hash">Hasher ce groupe</button>' : ''}
+          ${group.state === 'confirmed' ? '<button class="maint-btn danger" data-action="delete-extras">Supprimer les extras</button>' : ''}
+        </div>
+      </div>
+      <div class="dupe-items"></div>
+    `;
+
+    const itemsWrap = wrap.querySelector('.dupe-items');
+    group.items.forEach((it) => itemsWrap.appendChild(renderDupeItem(it, group, keepId)));
+
+    // Actions groupe
+    const hashBtn = wrap.querySelector('[data-action="hash"]');
+    if (hashBtn) {
+      hashBtn.addEventListener('click', async () => {
+        hashBtn.disabled = true;
+        hashBtn.textContent = 'Hash en cours...';
+        try {
+          await hashGroup(group);
+          renderDupes(true);
+        } catch (err) {
+          alert('Erreur hash : ' + err.message);
+          hashBtn.disabled = false;
+          hashBtn.textContent = 'Hasher ce groupe';
+        }
+      });
+    }
+
+    const delBtn = wrap.querySelector('[data-action="delete-extras"]');
+    if (delBtn) {
+      delBtn.addEventListener('click', async () => {
+        const toDelete = group.items.filter((i) => i.id !== keepId);
+        if (!confirm(`Supprimer définitivement ${toDelete.length} doublon(s) ? (DB + R2)\n\nGardé : ${sorted[0].file_name}`)) return;
+        delBtn.disabled = true;
+        delBtn.textContent = 'Suppression...';
+        try {
+          for (const victim of toDelete) {
+            await deleteVideo(victim);
+          }
+          renderDupes(true);
+        } catch (err) {
+          alert('Erreur suppression : ' + err.message);
+          delBtn.disabled = false;
+          delBtn.textContent = 'Supprimer les extras';
+        }
+      });
+    }
+
+    return wrap;
+  }
+
+  function renderDupeItem(item, group, keepId) {
+    const card = document.createElement('div');
+    card.className = 'dupe-item';
+    if (group.state === 'confirmed') {
+      card.classList.add(item.id === keepId ? 'to-keep' : 'to-delete');
+    }
+
+    const thumb = item.thumbnail_url || '';
+    const hashShort = item.content_hash ? item.content_hash.slice(0, 12) + '...' : 'non hashé';
+    const created = item.created_at ? new Date(item.created_at).toLocaleDateString('fr-FR') : '?';
+
+    card.innerHTML = `
+      <div class="dupe-thumb" style="${thumb ? `background-image:url('${escapeAttr(thumb)}')` : ''}"></div>
+      <div class="dupe-filename">${escapeHtml(item.file_name || item.r2_key || item.id)}</div>
+      <div class="dupe-meta">upload ${created}</div>
+      <div class="dupe-hash">${escapeHtml(hashShort)}</div>
+      <div class="dupe-item-actions">
+        <button data-action="preview">Voir</button>
+        <button class="danger" data-action="delete">Supprimer</button>
+      </div>
+    `;
+
+    const previewBtn = card.querySelector('[data-action="preview"]');
+    previewBtn.addEventListener('click', () => {
+      if (item.r2_url) window.open(item.r2_url, '_blank');
+    });
+
+    const deleteBtn = card.querySelector('[data-action="delete"]');
+    deleteBtn.addEventListener('click', async () => {
+      if (!confirm(`Supprimer définitivement ?\n\n${item.file_name || item.r2_key}`)) return;
+      deleteBtn.disabled = true;
+      deleteBtn.textContent = '...';
+      try {
+        await deleteVideo(item);
+        renderDupes(true);
+      } catch (err) {
+        alert('Erreur : ' + err.message);
+        deleteBtn.disabled = false;
+        deleteBtn.textContent = 'Supprimer';
+      }
+    });
+
+    return card;
+  }
+
+  // Hash SHA256 côté navigateur d'une vidéo R2, en streaming (ReadableStream).
+  async function hashVideoStreaming(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const reader = resp.body.getReader();
+    // crypto.subtle.digest ne streame pas, mais on peut accumuler les chunks
+    // et hasher à la fin. Pour des fichiers < 500 Mo c'est OK.
+    const chunks = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      total += value.length;
+    }
+    // Concatène puis digest
+    const buf = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) {
+      buf.set(c, off);
+      off += c.length;
+    }
+    const digest = await crypto.subtle.digest('SHA-256', buf);
+    const hex = Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    return { hash: hex, size: total };
+  }
+
+  async function hashGroup(group) {
+    for (const item of group.items) {
+      if (item.content_hash) continue;
+      if (!item.r2_url) continue;
+      const { hash } = await hashVideoStreaming(item.r2_url);
+      const { error } = await sb
+        .from('video_library')
+        .update({ content_hash: hash })
+        .eq('id', item.id);
+      if (error) throw error;
+      item.content_hash = hash;
+    }
+  }
+
+  // Suppression : utilise l'Edge Function delete-from-r2 pour R2, puis
+  // DELETE sur video_library via le client Supabase directement.
+  const DELETE_R2_URL = 'https://zrdlvoovrnglxcgoyyeb.supabase.co/functions/v1/delete-from-r2';
+  const DELETE_R2_TOKEN = 'somatica-r2-2026';
+
+  async function deleteVideo(item) {
+    // 1. Collecter les keys R2 à supprimer (fichier + miniature si présente)
+    const keys = [];
+    if (item.r2_key) keys.push(item.r2_key);
+    // Dériver la clé miniature depuis thumbnail_url si présente :
+    // https://.../thumbnails/xxx.jpg -> thumbnails/xxx.jpg
+    if (item.thumbnail_url) {
+      try {
+        const u = new URL(item.thumbnail_url);
+        // path commence par /<bucket-publique>/<key> — sur R2 public le domaine
+        // custom renvoie directement <key>. On prend le pathname sans slash initial.
+        const path = u.pathname.replace(/^\/+/, '');
+        if (path && !keys.includes(path)) keys.push(path);
+      } catch (_) { /* ignore */ }
+    }
+
+    // 2. Appel delete-from-r2
+    if (keys.length) {
+      const resp = await fetch(DELETE_R2_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${DELETE_R2_TOKEN}`,
+        },
+        body: JSON.stringify({ keys }),
+      });
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => '');
+        throw new Error(`R2 delete HTTP ${resp.status} ${txt}`);
+      }
+      const result = await resp.json();
+      if (result.errors && result.errors.length) {
+        // On log mais on ne bloque pas : mieux vaut finir le cleanup DB
+        console.warn('R2 delete errors:', result.errors);
+      }
+    }
+
+    // 3. DELETE ligne DB (cascade : face_sightings, etc. selon les FK)
+    const { error } = await sb
+      .from('video_library')
+      .delete()
+      .eq('id', item.id);
+    if (error) throw error;
+
+    return { id: item.id, r2_keys: keys };
   }
 
   // ------------------------------------------------------------
@@ -395,6 +706,38 @@
       await runJob('/faces/match', btn, status);
       renderFaces(true);
     });
+
+    // Onglet Doublons
+    const dupesRefreshBtn = $('#dupes-refresh');
+    if (dupesRefreshBtn) dupesRefreshBtn.addEventListener('click', () => renderDupes(true));
+    const dupesHashAllBtn = $('#dupes-hash-all');
+    if (dupesHashAllBtn) {
+      dupesHashAllBtn.addEventListener('click', async () => {
+        const pendingGroups = dupesState.groups.filter((g) => g.state === 'pending');
+        if (!pendingGroups.length) {
+          alert('Aucun groupe à hasher.');
+          return;
+        }
+        const totalItems = pendingGroups.reduce((s, g) => s + g.items.filter((i) => !i.content_hash).length, 0);
+        if (!confirm(`Hasher ${totalItems} fichiers (${pendingGroups.length} groupes) ? Cela peut prendre plusieurs minutes.`)) return;
+        dupesHashAllBtn.disabled = true;
+        const status = $('#dupes-status');
+        let done = 0;
+        try {
+          for (const g of pendingGroups) {
+            status.textContent = `Hash ${done + 1} / ${pendingGroups.length} groupes...`;
+            await hashGroup(g);
+            done++;
+          }
+          renderDupes(true);
+        } catch (err) {
+          alert('Erreur : ' + err.message);
+        } finally {
+          dupesHashAllBtn.disabled = false;
+          dupesHashAllBtn.textContent = 'Hasher tout';
+        }
+      });
+    }
   }
 
   // ------------------------------------------------------------
