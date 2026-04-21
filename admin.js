@@ -42,7 +42,12 @@
         // Chargements paresseux à la 1re ouverture
         if (target === 'faces') renderFaces();
         if (target === 'dupes') renderDupes();
-        if (target === 'maintenance') onMaintenanceOpen();
+        if (target === 'maintenance') {
+          onMaintenanceOpen();
+          onGeminiOpen();
+        } else {
+          if (typeof stopGeminiPolling === 'function') stopGeminiPolling();
+        }
       });
     });
   }
@@ -707,6 +712,9 @@
       renderFaces(true);
     });
 
+    // Section Gemini
+    setupGeminiHandlers();
+
     // Onglet Doublons
     const dupesRefreshBtn = $('#dupes-refresh');
     if (dupesRefreshBtn) dupesRefreshBtn.addEventListener('click', () => renderDupes(true));
@@ -738,6 +746,204 @@
         }
       });
     }
+  }
+
+  // ------------------------------------------------------------
+  // Gemini analysis monitoring
+  // ------------------------------------------------------------
+  let geminiPollTimer = null;
+
+  function setupGeminiHandlers() {
+    const slider = $('#gem-batch-slider');
+    const valEl = $('#gem-batch-val');
+    if (slider && valEl) {
+      slider.addEventListener('input', () => { valEl.textContent = slider.value; });
+    }
+    const refreshBtn = $('#gem-refresh');
+    if (refreshBtn) refreshBtn.addEventListener('click', refreshGeminiStats);
+    const unblockBtn = $('#gem-unblock');
+    if (unblockBtn) unblockBtn.addEventListener('click', unblockGhosts);
+    const retryBtn = $('#gem-retry-errors');
+    if (retryBtn) retryBtn.addEventListener('click', retryErrors);
+    const forceBtn = $('#gem-force-run');
+    if (forceBtn) forceBtn.addEventListener('click', forceRunCron);
+    const cronBtn = $('#gem-apply-cron');
+    if (cronBtn) cronBtn.addEventListener('click', applyCronBatch);
+  }
+
+  function onGeminiOpen() {
+    refreshGeminiStats();
+    if (geminiPollTimer) clearInterval(geminiPollTimer);
+    geminiPollTimer = setInterval(refreshGeminiStats, 15000);
+  }
+
+  function stopGeminiPolling() {
+    if (geminiPollTimer) { clearInterval(geminiPollTimer); geminiPollTimer = null; }
+  }
+
+  async function refreshGeminiStats() {
+    if (typeof sb === 'undefined') return;
+    try {
+      const { data: stats, error: e1 } = await sb.rpc('gemini_status_counts');
+      if (e1 || !stats) {
+        await fallbackStats();
+      } else {
+        renderGeminiStats(stats);
+      }
+    } catch (err) {
+      await fallbackStats();
+    }
+
+    // Erreurs récentes
+    try {
+      const { data: errors } = await sb
+        .from('video_library')
+        .select('id,file_name,analysis_error,updated_at')
+        .eq('analysis_status', 'error')
+        .order('updated_at', { ascending: false })
+        .limit(10);
+      renderGeminiErrors(errors || []);
+    } catch (e) {}
+
+    // Throughput 24h — on compte done + analyzed (les deux = Gemini terminé)
+    try {
+      const since = new Date(Date.now() - 24*3600*1000).toISOString();
+      const { data: done } = await sb
+        .from('video_library')
+        .select('analyzed_at')
+        .in('analysis_status', ['done', 'analyzed'])
+        .gte('analyzed_at', since);
+      renderThroughput(done || []);
+    } catch (e) {}
+  }
+
+  async function fallbackStats() {
+    const statuses = ['done', 'analyzed', 'processing', 'pending', 'error', 'skipped'];
+    const stats = [];
+    for (const s of statuses) {
+      const { count } = await sb
+        .from('video_library')
+        .select('id', { count: 'exact', head: true })
+        .eq('analysis_status', s);
+      stats.push({ status: s, n: count || 0 });
+    }
+    renderGeminiStats(stats);
+  }
+
+  function renderGeminiStats(rows) {
+    const map = {};
+    for (const r of rows || []) {
+      const k = r.status || r.analysis_status;
+      const v = r.n ?? r.count ?? 0;
+      map[k] = typeof v === 'string' ? parseInt(v, 10) : v;
+    }
+    const set = (id, val) => { const el = $(id); if (el) el.textContent = val; };
+    set('#gem-done', map.done || 0);
+    set('#gem-analyzed', map.analyzed || 0);
+    set('#gem-processing', map.processing || 0);
+    set('#gem-pending', map.pending || 0);
+    set('#gem-error', map.error || 0);
+    set('#gem-skipped', map.skipped || 0);
+  }
+
+  function renderGeminiErrors(errors) {
+    const wrap = $('#gemini-errors');
+    if (!errors.length) {
+      wrap.innerHTML = '<em>Aucune erreur récente</em>';
+      return;
+    }
+    wrap.innerHTML = errors.map(e => `
+      <div class="gemini-error-row">
+        <span class="file" title="${escapeAttr(e.file_name || e.id)}">${escapeHtml(e.file_name || e.id)}</span>
+        <span class="msg" title="${escapeAttr(e.analysis_error || '')}">${escapeHtml((e.analysis_error || 'Sans message').slice(0, 80))}</span>
+        <button data-id="${e.id}">Réessayer</button>
+      </div>
+    `).join('');
+    wrap.querySelectorAll('button[data-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        btn.disabled = true;
+        btn.textContent = '...';
+        const { error } = await sb
+          .from('video_library')
+          .update({ analysis_status: 'pending', analysis_error: null })
+          .eq('id', id);
+        if (error) { btn.textContent = 'Err'; logLine(`Retry ${id} : ${error.message}`, 'error'); return; }
+        logLine(`Retry ${id} → pending`, 'ok');
+        refreshGeminiStats();
+      });
+    });
+  }
+
+  function renderThroughput(rows) {
+    // 24 buckets d'1h
+    const buckets = new Array(24).fill(0);
+    const now = Date.now();
+    for (const r of rows) {
+      const t = new Date(r.analyzed_at).getTime();
+      const hAgo = Math.floor((now - t) / 3600000);
+      if (hAgo >= 0 && hAgo < 24) buckets[23 - hAgo]++;
+    }
+    const max = Math.max(1, ...buckets);
+    const wrap = $('#gemini-throughput');
+    wrap.innerHTML = buckets.map((n, i) => {
+      const h = Math.max(2, Math.round(n / max * 100));
+      const hour = (24 - i);
+      return `<div class="bar" style="height:${h}%"><span class="tip">${n} il y a ${hour}h</span></div>`;
+    }).join('');
+  }
+
+  async function unblockGhosts() {
+    const status = $('#gem-status');
+    status.textContent = 'Déblocage...';
+    const cutoff = new Date(Date.now() - 15*60*1000).toISOString();
+    const { error, count } = await sb
+      .from('video_library')
+      .update({ analysis_status: 'pending' }, { count: 'exact' })
+      .eq('analysis_status', 'processing')
+      .lt('updated_at', cutoff);
+    if (error) { status.textContent = `Erreur : ${error.message}`; return; }
+    status.textContent = `${count || 0} fantômes débloqués`;
+    logLine(`Gemini : ${count || 0} fantômes → pending`, 'ok');
+    refreshGeminiStats();
+  }
+
+  async function retryErrors() {
+    const status = $('#gem-status');
+    status.textContent = 'Reset des erreurs...';
+    const { error, count } = await sb
+      .from('video_library')
+      .update({ analysis_status: 'pending', analysis_error: null }, { count: 'exact' })
+      .eq('analysis_status', 'error');
+    if (error) { status.textContent = `Erreur : ${error.message}`; return; }
+    status.textContent = `${count || 0} erreurs → pending`;
+    logLine(`Gemini : ${count || 0} erreurs réessayées`, 'ok');
+    refreshGeminiStats();
+  }
+
+  async function forceRunCron() {
+    const status = $('#gem-status');
+    const batch = parseInt($('#gem-batch-slider').value || '30', 10);
+    status.textContent = `Envoi ${batch} clips à Gemini...`;
+    const { data, error } = await sb.rpc('analyze_pending_clips', { batch_size: batch });
+    if (error) { status.textContent = `Erreur : ${error.message}`; return; }
+    status.textContent = `${data} clips envoyés`;
+    logLine(`Gemini : ${data} clips lancés (batch ${batch})`, 'ok');
+    setTimeout(refreshGeminiStats, 1500);
+  }
+
+  async function applyCronBatch() {
+    const status = $('#gem-status');
+    const batch = parseInt($('#gem-batch-slider').value || '30', 10);
+    status.textContent = 'Mise à jour cron...';
+    const { error } = await sb.rpc('set_gemini_cron_batch', { new_batch: batch });
+    if (error) {
+      status.textContent = `RPC manquante : crée set_gemini_cron_batch ou modifie le cron via SQL`;
+      logLine(`set_gemini_cron_batch : ${error.message}`, 'error');
+      return;
+    }
+    status.textContent = `Cron mis à jour → batch ${batch}`;
+    logLine(`Cron Gemini → batch ${batch}`, 'ok');
   }
 
   // ------------------------------------------------------------

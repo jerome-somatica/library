@@ -394,16 +394,221 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 .toast.success { border-color: rgba(150, 220, 150, 0.4); color: #a8e6a8; }
 @keyframes slideIn { from { transform: translateX(120%); } to { transform: translateX(0); } }
 
-/* Mobile adjustments : filtres secondaires cachés par défaut */
-@media (max-width: 767px) {
-  .filters-row.secondary { display: none; }
-  .filters-row.secondary.open { display: flex; }
-  .filters-toggle-secondary {
-    margin-left: auto;
-  }
+/* ----------- v3 (2026-04-21) : barre compacte + presets + drawer ----------- */
+
+/* Barre principale compacte */
+.filters-main {
+  padding: 10px 20px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
 }
-@media (min-width: 768px) {
-  .filters-toggle-secondary { display: none; }
+.filters-main input[type="search"] {
+  flex: 1; min-width: 200px;
+}
+
+/* Bouton "Filtres avancés" (ouvre le drawer) */
+.btn-filters-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(235, 211, 160, 0.08);
+  border: 1px solid rgba(235, 211, 160, 0.25);
+  color: #ebd3a0;
+  padding: 7px 13px; border-radius: 6px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  font-family: inherit; transition: all 0.15s;
+  position: relative;
+}
+.btn-filters-toggle:hover { border-color: #ebd3a0; background: rgba(235,211,160,0.14); }
+.btn-filters-toggle .badge {
+  background: #ebd3a0; color: #0f2f3a;
+  border-radius: 999px; font-size: 10px; font-weight: 700;
+  padding: 1px 6px; min-width: 16px; text-align: center;
+}
+
+/* Presets row */
+.presets-row {
+  display: flex; flex-wrap: nowrap; gap: 6px; align-items: center;
+  padding: 6px 20px 8px 20px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  border-top: 1px dashed rgba(235, 211, 160, 0.08);
+}
+.presets-row::-webkit-scrollbar { height: 4px; }
+.presets-row::-webkit-scrollbar-thumb { background: rgba(235,211,160,0.2); border-radius: 2px; }
+.preset {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: transparent;
+  border: 1px solid rgba(235, 211, 160, 0.18);
+  color: rgba(235, 211, 160, 0.85);
+  padding: 5px 11px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  font-family: inherit; white-space: nowrap;
+  transition: all 0.15s; flex-shrink: 0;
+}
+.preset:hover { border-color: rgba(235,211,160,0.4); color: #ebd3a0; }
+.preset.active {
+  background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0;
+}
+
+/* Active filter chips (pills affichant les filtres actuellement appliqués) */
+.active-chips-row {
+  display: none;
+  flex-wrap: wrap; gap: 6px; align-items: center;
+  padding: 6px 20px 10px 20px;
+  border-top: 1px dashed rgba(235, 211, 160, 0.08);
+}
+.active-chips-row.has-chips { display: flex; }
+.active-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(235, 211, 160, 0.14);
+  border: 1px solid rgba(235, 211, 160, 0.3);
+  color: #ebd3a0;
+  padding: 4px 6px 4px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 500;
+}
+.active-chip .x {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: rgba(235,211,160,0.25); color: #ebd3a0;
+  border: 0; cursor: pointer; font-size: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; line-height: 1; font-family: inherit;
+}
+.active-chip .x:hover { background: #ebd3a0; color: #0f2f3a; }
+.btn-clear-all {
+  background: transparent; border: 0;
+  color: rgba(235,211,160,0.65); font-size: 11px;
+  cursor: pointer; padding: 4px 8px;
+  text-decoration: underline; font-family: inherit;
+}
+.btn-clear-all:hover { color: #ebd3a0; }
+
+/* Bottom row : compteur + zoom */
+.filters-bottom {
+  padding: 4px 20px 8px 20px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  border-top: 1px dashed rgba(235, 211, 160, 0.08);
+}
+
+/* ----------- DRAWER LATÉRAL (filtres avancés) ----------- */
+.drawer-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 99;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s;
+}
+.drawer-overlay.open { opacity: 1; pointer-events: auto; }
+
+.filters-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 380px; max-width: 92vw;
+  background: #0f2f3a;
+  border-left: 1px solid rgba(235,211,160,0.2);
+  z-index: 100;
+  transform: translateX(100%);
+  transition: transform 0.25s ease-out;
+  display: flex; flex-direction: column;
+  box-shadow: -8px 0 30px rgba(0,0,0,0.5);
+}
+.filters-drawer.open { transform: translateX(0); }
+
+.drawer-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(235,211,160,0.12);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.drawer-header h3 {
+  font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 500;
+  color: #ebd3a0;
+}
+.drawer-close {
+  background: none; border: none; color: #ebd3a0;
+  font-size: 26px; cursor: pointer;
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: inherit; line-height: 1;
+}
+.drawer-close:hover { background: rgba(235,211,160,0.1); }
+
+.drawer-body {
+  flex: 1; overflow-y: auto;
+  padding: 16px 20px;
+}
+.drawer-section { margin-bottom: 22px; }
+.drawer-section h4 {
+  font-size: 11px; font-weight: 600;
+  color: rgba(235,211,160,0.55);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(235,211,160,0.08);
+}
+.drawer-field {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 10px;
+}
+.drawer-field label {
+  font-size: 13px; color: rgba(235,211,160,0.85);
+  flex: 1;
+}
+.drawer-field select,
+.drawer-field .multi-select-btn {
+  min-width: 160px; max-width: 220px;
+  font-size: 13px;
+}
+
+/* Dans le drawer, les multi-select panels s'ouvrent vers la gauche */
+.filters-drawer .multi-select { position: relative; }
+.filters-drawer .multi-select-panel {
+  right: 0; left: auto;
+  max-width: 280px;
+}
+
+/* Triple-chip pour le drawer (Avec / Sans) */
+.drawer-triple {
+  display: inline-flex; gap: 4px;
+}
+.drawer-triple .chip {
+  font-size: 11px; padding: 4px 9px;
+}
+
+.drawer-footer {
+  padding: 14px 20px;
+  border-top: 1px solid rgba(235,211,160,0.12);
+  display: flex; gap: 10px;
+  flex-shrink: 0;
+}
+.drawer-footer button {
+  flex: 1; padding: 10px 16px;
+  border-radius: 8px; font-size: 13px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-drawer-reset {
+  background: transparent; color: rgba(235,211,160,0.8);
+  border: 1px solid rgba(235,211,160,0.3);
+}
+.btn-drawer-reset:hover { color: #ebd3a0; border-color: #ebd3a0; }
+.btn-drawer-apply {
+  background: #ebd3a0; color: #0f2f3a; border: 0;
+}
+.btn-drawer-apply:hover { background: #f5e2b3; }
+
+/* Mobile : drawer en bottom sheet */
+@media (max-width: 767px) {
+  .filters-drawer {
+    top: auto; left: 0; right: 0; bottom: 0;
+    width: 100%; max-width: 100%;
+    height: 85vh;
+    border-left: none;
+    border-top: 1px solid rgba(235,211,160,0.2);
+    border-radius: 16px 16px 0 0;
+    transform: translateY(100%);
+  }
+  .filters-drawer.open { transform: translateY(0); }
+  .filters-main { padding: 8px 14px; gap: 6px; }
+  .presets-row { padding: 6px 14px 8px 14px; }
+  .active-chips-row { padding: 6px 14px 10px 14px; }
+  .filters-bottom { padding: 4px 14px 8px 14px; }
 }
 
 /* -------------------------------------------------------------------------
@@ -645,6 +850,123 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 }
 .maint-log .row { opacity: 0.85; margin-bottom: 2px; }
 .maint-log .row .ok { color: #a8e6a8; }
+
+/* Section Gemini */
+.gemini-stats {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.gemini-stat {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(235,211,160,0.15);
+  border-radius: 8px;
+  padding: 12px 10px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.gemini-stat .label {
+  display: block;
+  font-size: 11px;
+  opacity: 0.65;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+.gemini-stat .value {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  color: #ebd3a0;
+}
+.gemini-stat.analyzed .value { color: #a8e6cf; }
+.gemini-stat.processing .value { color: #ffd27a; }
+.gemini-stat.pending .value { color: #a8d0ff; }
+.gemini-stat.error .value { color: #ff9a9a; }
+.gemini-stat.skipped .value { color: rgba(235,211,160,0.45); }
+
+.gemini-errors-wrap, .gemini-throughput-wrap {
+  margin-top: 16px;
+}
+.gemini-errors-wrap h4, .gemini-throughput-wrap h4 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+  margin: 0 0 8px 0;
+}
+.gemini-errors {
+  background: rgba(0,0,0,0.25);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.gemini-errors em { opacity: 0.5; }
+.gemini-error-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.gemini-error-row:last-child { border-bottom: none; }
+.gemini-error-row .file { flex: 1; font-family: 'SF Mono', monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gemini-error-row .msg { flex: 2; opacity: 0.75; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gemini-error-row button {
+  background: transparent;
+  border: 1px solid rgba(235,211,160,0.3);
+  color: #ebd3a0;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.gemini-error-row button:hover { background: rgba(235,211,160,0.15); }
+
+.gemini-throughput {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 80px;
+  background: rgba(0,0,0,0.25);
+  padding: 10px;
+  border-radius: 6px;
+}
+.gemini-throughput .bar {
+  flex: 1;
+  background: linear-gradient(to top, #ebd3a0, rgba(235,211,160,0.4));
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  position: relative;
+  cursor: help;
+}
+.gemini-throughput .bar:hover { filter: brightness(1.2); }
+.gemini-throughput .bar .tip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0f2f3a;
+  color: #ebd3a0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.gemini-throughput .bar:hover .tip { opacity: 1; }
+
+@media (max-width: 900px) {
+  .gemini-stats { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 500px) {
+  .gemini-stats { grid-template-columns: repeat(2, 1fr); }
+}
 .maint-log .row .err { color: #ff9a9a; }
 .maint-log .row .pending { color: #ffc878; }
 .worker-offline {
@@ -693,15 +1015,15 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
   <div class="view active" id="view-gallery">
 
   <div class="filters">
-    <!-- Ligne 1 : recherche + essentiels -->
-    <div class="filters-row">
+    <!-- Ligne 1 : barre principale compacte -->
+    <div class="filters-main">
       <input type="search" id="search-input" placeholder="Rechercher description, tags, transcript...">
 
       <select id="sort-select" title="Trier par">
-        <option value="source_desc">📅 Plus récent (source)</option>
-        <option value="source_asc">📅 Plus ancien (source)</option>
-        <option value="upload_desc">⬆️ Plus récent (upload)</option>
-        <option value="upload_asc">⬆️ Plus ancien (upload)</option>
+        <option value="source_desc">📅 Plus récent</option>
+        <option value="source_asc">📅 Plus ancien</option>
+        <option value="upload_desc">⬆️ Upload récent</option>
+        <option value="upload_asc">⬆️ Upload ancien</option>
         <option value="location_asc">🌍 Lieu A-Z</option>
         <option value="quality_desc">⭐ Qualité ↓</option>
         <option value="quality_asc">⭐ Qualité ↑</option>
@@ -709,107 +1031,33 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
         <option value="duration_desc">⏱️ Durée ↓</option>
       </select>
 
-      <div class="chip primary-chip" id="usable-reel" title="Usable pour Reel">
-        <span>✨</span> Prêt Reel
-      </div>
-
-      <div class="slider-wrap" title="Qualité minimum">
-        <label for="quality-slider">⭐ ≥</label>
-        <input type="range" id="quality-slider" min="0" max="10" step="1" value="0">
-        <span class="val" id="quality-val">0</span>
-      </div>
-
-      <select id="persons-filter" title="Personnes">
-        <option value="">Toutes personnes</option>
-        <option value="0">Sans personne</option>
-        <option value="1">1 personne</option>
-        <option value="2+">2+ personnes</option>
-      </select>
-
-      <select id="intensity-filter" title="Intensité émotionnelle">
-        <option value="">Toutes intensités</option>
-        <option value="calm">Calme</option>
-        <option value="neutral">Neutre</option>
-        <option value="intense">Intense</option>
-      </select>
-
-      <div class="chip" id="chip-music-with" data-value="with">🎵 Musique</div>
-      <div class="chip" id="chip-music-without" data-value="without">🔇 Sans musique</div>
-      <div class="chip" id="chip-speech-with" data-value="with">💬 Paroles</div>
-      <div class="chip" id="chip-speech-without" data-value="without">🤫 Sans paroles</div>
-
-      <button class="btn-reset filters-toggle-secondary" id="toggle-secondary">Plus de filtres ↓</button>
+      <button class="btn-filters-toggle" id="btn-open-drawer" title="Filtres avancés">
+        <span>⚙️ Filtres</span>
+        <span class="badge" id="active-filters-badge" style="display:none">0</span>
+      </button>
     </div>
 
-    <!-- Ligne 2 : multi-selects + secondaires -->
-    <div class="filters-row secondary">
-      <div class="multi-select" data-filter="emotions">
-        <button class="multi-select-btn" id="emotions-btn">
-          <span>Émotion</span> <span class="caret">▼</span>
-        </button>
-        <div class="multi-select-panel" id="emotions-panel"></div>
-      </div>
-
-      <div class="multi-select" data-filter="tags">
-        <button class="multi-select-btn" id="tags-btn">
-          <span>Tags</span> <span class="caret">▼</span>
-        </button>
-        <div class="multi-select-panel" id="tags-panel"></div>
-      </div>
-
-      <div class="multi-select" data-filter="personsNames">
-        <button class="multi-select-btn" id="personsNames-btn">
-          <span>👤 Personnes</span> <span class="caret">▼</span>
-        </button>
-        <div class="multi-select-panel" id="personsNames-panel"></div>
-      </div>
-
-      <select id="ambiance-filter">
-        <option value="">Toutes ambiances</option>
-      </select>
-
-      <select id="movement-filter">
-        <option value="">Tous mouvements</option>
-      </select>
-
-      <select id="lighting-filter">
-        <option value="">Tous éclairages</option>
-      </select>
-
-      <select id="location-filter">
-        <option value="">Tous lieux</option>
-      </select>
-
-      <select id="duration-filter">
-        <option value="">Toutes durées</option>
-        <option value="short">Courte (0-15s)</option>
-        <option value="medium">Moyenne (15-60s)</option>
-        <option value="long">Longue (60s+)</option>
-      </select>
-
-      <select id="status-filter">
-        <option value="available">Dispo</option>
-        <option value="in_use">Utilisé</option>
-        <option value="archived">Archivé</option>
-        <option value="rejected">Rejeté</option>
-        <option value="">Tous statuts</option>
-      </select>
-
-      <select id="analysis-filter">
-        <option value="">Toutes analyses</option>
-        <option value="done">Analysées</option>
-        <option value="pending">En attente</option>
-        <option value="in_progress">En cours</option>
-        <option value="failed">Échec</option>
-      </select>
-
-      <button class="btn-reset" id="reset-filters">↻ Réinitialiser</button>
+    <!-- Ligne 2 : presets rapides -->
+    <div class="presets-row" id="presets-row">
+      <button class="preset" data-preset="reel">✨ Prêts Reel</button>
+      <button class="preset" data-preset="calm">🎬 Calm</button>
+      <button class="preset" data-preset="intense">🔥 Intense</button>
+      <button class="preset" data-preset="neutral">🧘 Neutre</button>
+      <button class="preset" data-preset="to_analyze">💭 À analyser</button>
+      <button class="preset" data-preset="no_face">👤 Sans visage</button>
+      <button class="preset" data-preset="with_music">🎵 Avec musique</button>
+      <button class="preset" data-preset="with_location">📍 Avec lieu</button>
     </div>
 
-    <!-- Ligne 3 : infos + zoom -->
-    <div class="filters-row" style="padding-top:6px; padding-bottom:8px;">
+    <!-- Ligne 3 : filtres actifs (chips) -->
+    <div class="active-chips-row" id="active-chips-row">
+      <!-- généré dynamiquement par JS -->
+    </div>
+
+    <!-- Ligne 4 : compteur + zoom -->
+    <div class="filters-bottom">
       <span class="count-filtered" id="filtered-count"></span>
-      <div class="zoom-control" id="zoom-control" aria-label="Densité de la grille">
+      <div class="zoom-control" id="zoom-control" aria-label="Densité de la grille" style="margin-left:auto">
         <button data-cols="1" title="1 colonne">1</button>
         <button data-cols="2" title="2 colonnes">2</button>
         <button data-cols="3" title="3 colonnes">3</button>
@@ -817,6 +1065,165 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
       </div>
     </div>
   </div>
+
+  <!-- Drawer filtres avancés -->
+  <div class="drawer-overlay" id="drawer-overlay"></div>
+  <aside class="filters-drawer" id="filters-drawer" aria-label="Filtres avancés">
+    <div class="drawer-header">
+      <h3>Filtres avancés</h3>
+      <button class="drawer-close" id="drawer-close" aria-label="Fermer">×</button>
+    </div>
+
+    <div class="drawer-body">
+
+      <section class="drawer-section">
+        <h4>Quick access</h4>
+        <div class="drawer-field">
+          <label for="usable-reel">✨ Prêt pour Reel</label>
+          <div class="chip primary-chip" id="usable-reel" title="Usable pour Reel">
+            <span>✨</span> Activer
+          </div>
+        </div>
+        <div class="drawer-field">
+          <label>⭐ Qualité minimum</label>
+          <div class="slider-wrap" title="Qualité minimum">
+            <input type="range" id="quality-slider" min="0" max="10" step="1" value="0">
+            <span class="val" id="quality-val">0</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="drawer-section">
+        <h4>Contenu</h4>
+        <div class="drawer-field">
+          <label for="intensity-filter">🎭 Intensité</label>
+          <select id="intensity-filter" title="Intensité émotionnelle">
+            <option value="">Toutes</option>
+            <option value="calm">Calme</option>
+            <option value="neutral">Neutre</option>
+            <option value="intense">Intense</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label>Émotions</label>
+          <div class="multi-select" data-filter="emotions">
+            <button class="multi-select-btn" id="emotions-btn">
+              <span>Toutes</span> <span class="caret">▼</span>
+            </button>
+            <div class="multi-select-panel" id="emotions-panel"></div>
+          </div>
+        </div>
+        <div class="drawer-field">
+          <label>Tags</label>
+          <div class="multi-select" data-filter="tags">
+            <button class="multi-select-btn" id="tags-btn">
+              <span>Tous</span> <span class="caret">▼</span>
+            </button>
+            <div class="multi-select-panel" id="tags-panel"></div>
+          </div>
+        </div>
+        <div class="drawer-field">
+          <label>👤 Personnes</label>
+          <select id="persons-filter" title="Personnes">
+            <option value="">Toutes</option>
+            <option value="0">Sans personne</option>
+            <option value="1">1 personne</option>
+            <option value="2+">2+ personnes</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label>👤 Personnes nommées</label>
+          <div class="multi-select" data-filter="personsNames">
+            <button class="multi-select-btn" id="personsNames-btn">
+              <span>Toutes</span> <span class="caret">▼</span>
+            </button>
+            <div class="multi-select-panel" id="personsNames-panel"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="drawer-section">
+        <h4>Technique</h4>
+        <div class="drawer-field">
+          <label for="ambiance-filter">Ambiance</label>
+          <select id="ambiance-filter">
+            <option value="">Toutes</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="movement-filter">Mouvement</label>
+          <select id="movement-filter">
+            <option value="">Tous</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="lighting-filter">Éclairage</label>
+          <select id="lighting-filter">
+            <option value="">Tous</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="location-filter">Lieu</label>
+          <select id="location-filter">
+            <option value="">Tous</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="duration-filter">Durée</label>
+          <select id="duration-filter">
+            <option value="">Toutes</option>
+            <option value="short">Courte (0-15s)</option>
+            <option value="medium">Moyenne (15-60s)</option>
+            <option value="long">Longue (60s+)</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label>🎵 Musique</label>
+          <div class="drawer-triple">
+            <div class="chip" id="chip-music-with" data-value="with">Avec</div>
+            <div class="chip" id="chip-music-without" data-value="without">Sans</div>
+          </div>
+        </div>
+        <div class="drawer-field">
+          <label>💬 Paroles</label>
+          <div class="drawer-triple">
+            <div class="chip" id="chip-speech-with" data-value="with">Avec</div>
+            <div class="chip" id="chip-speech-without" data-value="without">Sans</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="drawer-section">
+        <h4>Statut</h4>
+        <div class="drawer-field">
+          <label for="status-filter">Statut clip</label>
+          <select id="status-filter">
+            <option value="available">Dispo</option>
+            <option value="in_use">Utilisé</option>
+            <option value="archived">Archivé</option>
+            <option value="rejected">Rejeté</option>
+            <option value="">Tous</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="analysis-filter">Analyse</label>
+          <select id="analysis-filter">
+            <option value="">Toutes</option>
+            <option value="done">Analysées</option>
+            <option value="pending">En attente</option>
+            <option value="in_progress">En cours</option>
+            <option value="failed">Échec</option>
+          </select>
+        </div>
+      </section>
+
+    </div>
+
+    <div class="drawer-footer">
+      <button class="btn-drawer-reset" id="reset-filters">↻ Réinitialiser</button>
+      <button class="btn-drawer-apply" id="drawer-apply">✓ Fermer</button>
+    </div>
+  </aside>
 
   <div class="gallery" id="gallery">
     <div class="loading">Chargement des clips...</div>
@@ -913,6 +1320,43 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
           <button class="maint-btn" id="faces-build">Build (apprendre sur vidéos mono-personne)</button>
           <button class="maint-btn primary" id="faces-match">Match (identifier _UNKNOWN_)</button>
           <span class="maint-status" id="facejob-status"></span>
+        </div>
+      </div>
+
+      <div class="maint-section">
+        <h3>Analyse Gemini</h3>
+
+        <div class="gemini-stats" id="gemini-stats">
+          <div class="gemini-stat"><span class="label">Done</span><span class="value" id="gem-done">—</span></div>
+          <div class="gemini-stat analyzed"><span class="label">Analyzed</span><span class="value" id="gem-analyzed">—</span></div>
+          <div class="gemini-stat processing"><span class="label">Processing</span><span class="value" id="gem-processing">—</span></div>
+          <div class="gemini-stat pending"><span class="label">Pending</span><span class="value" id="gem-pending">—</span></div>
+          <div class="gemini-stat error"><span class="label">Error</span><span class="value" id="gem-error">—</span></div>
+          <div class="gemini-stat skipped"><span class="label">Skipped</span><span class="value" id="gem-skipped">—</span></div>
+        </div>
+
+        <div class="maint-row">
+          <button class="maint-btn" id="gem-refresh">↻ Actualiser</button>
+          <button class="maint-btn" id="gem-unblock">Débloquer fantômes</button>
+          <button class="maint-btn" id="gem-retry-errors">Réessayer erreurs</button>
+          <button class="maint-btn primary" id="gem-force-run">Forcer un tour (batch <span id="gem-batch-val">30</span>)</button>
+          <span class="maint-status" id="gem-status"></span>
+        </div>
+
+        <div class="maint-row">
+          <label for="gem-batch-slider">Batch size</label>
+          <input type="range" id="gem-batch-slider" min="5" max="100" step="5" value="30">
+          <button class="maint-btn" id="gem-apply-cron">Appliquer au cron</button>
+        </div>
+
+        <div class="gemini-errors-wrap">
+          <h4>Dernières erreurs</h4>
+          <div class="gemini-errors" id="gemini-errors"><em>Aucune</em></div>
+        </div>
+
+        <div class="gemini-throughput-wrap">
+          <h4>Vidéos analysées (dernières 24h)</h4>
+          <div class="gemini-throughput" id="gemini-throughput"></div>
         </div>
       </div>
 
