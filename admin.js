@@ -26,6 +26,7 @@
     const views = {
       gallery: $('#view-gallery'),
       faces: $('#view-faces'),
+      ai: $('#view-ai'),
       dupes: $('#view-dupes'),
       maintenance: $('#view-maintenance'),
     };
@@ -42,8 +43,8 @@
         // Chargements paresseux à la 1re ouverture
         if (target === 'faces') renderFaces();
         if (target === 'dupes') renderDupes();
-        if (target === 'maintenance') {
-          onMaintenanceOpen();
+        if (target === 'maintenance') onMaintenanceOpen();
+        if (target === 'ai') {
           onGeminiOpen();
         } else {
           if (typeof stopGeminiPolling === 'function') stopGeminiPolling();
@@ -769,10 +770,12 @@
     if (forceBtn) forceBtn.addEventListener('click', forceRunCron);
     const cronBtn = $('#gem-apply-cron');
     if (cronBtn) cronBtn.addEventListener('click', applyCronBatch);
+    setupSuppHandlers();
   }
 
   function onGeminiOpen() {
     refreshGeminiStats();
+    renderSuppBatch();
     if (geminiPollTimer) clearInterval(geminiPollTimer);
     geminiPollTimer = setInterval(refreshGeminiStats, 15000);
   }
@@ -944,6 +947,73 @@
     }
     status.textContent = `Cron mis à jour → batch ${batch}`;
     logLine(`Cron Gemini → batch ${batch}`, 'ok');
+  }
+
+  // ------------------------------------------------------------
+  // Analyses Gemini complémentaires (on-demand par clip)
+  // ------------------------------------------------------------
+  const SUPP_KINDS = [
+    { key: 'reel_pitch', label: '🎯 Pitchs Reel', desc: '3 angles narratifs' },
+    { key: 'cut_points', label: '✂︎ Points de coupe', desc: 'Segments exploitables' },
+    { key: 'captions',   label: '📝 Captions overlay', desc: '3 stratégies de texte' },
+  ];
+
+  async function renderSuppBatch() {
+    const grid = $('#supp-kinds-grid');
+    if (!grid || typeof sb === 'undefined') return;
+    const status = $('#supp-status');
+    if (status) status.textContent = 'Chargement...';
+
+    // On récupère tous les statuts pour tous les kinds en une passe.
+    // Volume raisonnable : quelques centaines de lignes max à ce stade.
+    const { data, error } = await sb
+      .from('clip_supplementary_analyses')
+      .select('kind,status')
+      .limit(5000);
+
+    if (error) {
+      grid.innerHTML = `<div class="maint-status" style="color:#ff9a9a">Erreur : ${escapeHtml(error.message)}</div>`;
+      if (status) status.textContent = '';
+      return;
+    }
+
+    // Regrouper par kind
+    const buckets = {};
+    for (const k of SUPP_KINDS) buckets[k.key] = { done: 0, processing: 0, error: 0, total: 0 };
+    for (const row of data || []) {
+      const b = buckets[row.kind];
+      if (!b) continue;
+      b.total++;
+      if (row.status === 'done') b.done++;
+      else if (row.status === 'processing') b.processing++;
+      else if (row.status === 'error') b.error++;
+    }
+
+    grid.innerHTML = SUPP_KINDS.map(k => {
+      const b = buckets[k.key];
+      return `
+        <div class="supp-kind-card">
+          <div class="kind-name">${escapeHtml(k.label)}</div>
+          <div style="font-size:11px;opacity:0.65;margin-bottom:8px">${escapeHtml(k.desc)}</div>
+          <div class="counts">
+            <span class="c-done">${b.done} done</span>
+            <span class="c-processing">${b.processing} en cours</span>
+            <span class="c-error">${b.error} err</span>
+          </div>
+          <div style="font-size:11px;opacity:0.55;margin-top:6px">Total : ${b.total}</div>
+        </div>
+      `;
+    }).join('');
+
+    if (status) status.textContent = `Actualisé ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  }
+
+  function setupSuppHandlers() {
+    const btn = $('#supp-refresh');
+    if (btn && !btn.dataset.bound) {
+      btn.addEventListener('click', renderSuppBatch);
+      btn.dataset.bound = '1';
+    }
   }
 
   // ------------------------------------------------------------

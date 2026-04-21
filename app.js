@@ -55,6 +55,7 @@ const DEFAULT_FILTERS = {
   usableReel: false,
   emotions: [],  // multi
   tags: [],      // multi
+  personsNames: [],  // multi (noms Apple)
 };
 
 const state = {
@@ -72,7 +73,7 @@ const state = {
   // Catalogues remplis depuis la DB (distinct values)
   catalog: {
     ambiances: [], movements: [], lightings: [], locations: [],
-    emotions: [], tags: [],
+    emotions: [], tags: [], personsNames: [],
   },
 };
 
@@ -109,7 +110,14 @@ const durationFilter = $('duration-filter');
 const statusFilter = $('status-filter');
 const analysisFilter = $('analysis-filter');
 const resetFiltersBtn = $('reset-filters');
-const toggleSecondaryBtn = $('toggle-secondary');
+const btnOpenDrawer = $('btn-open-drawer');
+const drawerOverlay = $('drawer-overlay');
+const filtersDrawer = $('filters-drawer');
+const drawerClose = $('drawer-close');
+const drawerApply = $('drawer-apply');
+const activeFiltersBadge = $('active-filters-badge');
+const presetsRow = $('presets-row');
+const activeChipsRow = $('active-chips-row');
 const gallery = $('gallery');
 const selectionBar = $('selection-bar');
 const selCount = $('sel-count');
@@ -288,13 +296,12 @@ async function bootstrapCatalogs() {
   // Plus simple que des GROUP BY : on lit les 1000 premières lignes analysées.
   const { data, error } = await sb
     .from('video_library')
-    .select('ambiance,movement,lighting,location_name,emotional_states,tags')
-    .eq('analysis_status', 'done')
+    .select('ambiance,movement,lighting,location_name,emotional_states,tags,persons_detected,analysis_status')
     .limit(2000);
   if (error) { console.warn('catalog load error', error); return; }
 
   const amb = new Map(), mov = new Map(), lig = new Map(), loc = new Map();
-  const emo = new Map(), tag = new Map();
+  const emo = new Map(), tag = new Map(), persons = new Map();
   for (const r of data || []) {
     if (r.ambiance) amb.set(r.ambiance, (amb.get(r.ambiance) || 0) + 1);
     if (r.movement) mov.set(r.movement, (mov.get(r.movement) || 0) + 1);
@@ -302,6 +309,9 @@ async function bootstrapCatalogs() {
     if (r.location_name) loc.set(r.location_name, (loc.get(r.location_name) || 0) + 1);
     (r.emotional_states || []).forEach(e => emo.set(e, (emo.get(e) || 0) + 1));
     (r.tags || []).forEach(t => tag.set(t, (tag.get(t) || 0) + 1));
+    // noms de personnes (filtrer _UNKNOWN_ et doublons dans la même vidéo)
+    const uniq = new Set((r.persons_detected || []).filter(n => n && n !== '_UNKNOWN_'));
+    uniq.forEach(n => persons.set(n, (persons.get(n) || 0) + 1));
   }
   const toSorted = (m) => [...m.entries()].sort((a,b) => b[1]-a[1]).map(([v, c]) => ({ value: v, count: c }));
   state.catalog.ambiances = toSorted(amb);
@@ -310,6 +320,7 @@ async function bootstrapCatalogs() {
   state.catalog.locations = toSorted(loc);
   state.catalog.emotions  = toSorted(emo);
   state.catalog.tags      = toSorted(tag);
+  state.catalog.personsNames = toSorted(persons);
 
   populateSelect(ambianceFilter, state.catalog.ambiances, 'Toutes ambiances');
   populateSelect(movementFilter, state.catalog.movements, 'Tous mouvements');
@@ -317,6 +328,7 @@ async function bootstrapCatalogs() {
   populateSelect(locationFilter, state.catalog.locations, 'Tous lieux');
   populateMultiSelect('emotions', state.catalog.emotions);
   populateMultiSelect('tags', state.catalog.tags);
+  populateMultiSelect('personsNames', state.catalog.personsNames);
 
   // Restaurer les valeurs après populate
   ambianceFilter.value = state.filters.ambiance || '';
@@ -325,6 +337,7 @@ async function bootstrapCatalogs() {
   locationFilter.value = state.filters.location || '';
   updateMultiSelectBtn('emotions');
   updateMultiSelectBtn('tags');
+  updateMultiSelectBtn('personsNames');
 }
 
 function populateSelect(el, items, placeholder) {
@@ -374,8 +387,14 @@ function toggleMulti(kind, value) {
 
 function updateMultiSelectBtn(kind) {
   const btn = document.getElementById(`${kind}-btn`);
+  if (!btn) return;
   const arr = state.filters[kind];
-  const label = kind === 'emotions' ? 'Émotion' : 'Tags';
+  const labels = {
+    emotions: 'Émotion',
+    tags: 'Tags',
+    personsNames: '👤 Personnes',
+  };
+  const label = labels[kind] || kind;
   if (arr.length) {
     btn.querySelector('span:first-child').textContent = `${label} (${arr.length})`;
     btn.classList.add('has-selection');
@@ -430,6 +449,7 @@ function buildQuery() {
 
   if (f.emotions.length) q = q.contains('emotional_states', f.emotions);
   if (f.tags.length) q = q.contains('tags', f.tags);
+  if (f.personsNames && f.personsNames.length) q = q.overlaps('persons_detected', f.personsNames);
 
   if (f.search) {
     const s = f.search.replace(/[%_]/g, '');
@@ -448,8 +468,22 @@ function buildQuery() {
     case 'upload_desc':
       q = q.order('created_at', { ascending: false, nullsFirst: false });
       break;
+    case 'upload_asc':
+      q = q.order('created_at', { ascending: true, nullsFirst: false });
+      break;
+    case 'source_asc':
+      q = q.order('created_at_source', { ascending: true, nullsFirst: false });
+      break;
+    case 'location_asc':
+      q = q.order('location_name', { ascending: true, nullsFirst: false })
+           .order('created_at_source', { ascending: false, nullsFirst: false });
+      break;
     case 'quality_desc':
       q = q.order('quality_score', { ascending: false, nullsFirst: false })
+           .order('created_at_source', { ascending: false, nullsFirst: false });
+      break;
+    case 'quality_asc':
+      q = q.order('quality_score', { ascending: true, nullsFirst: false })
            .order('created_at_source', { ascending: false, nullsFirst: false });
       break;
     case 'duration_asc':
@@ -506,6 +540,8 @@ async function loadMore() {
 
 function resetAndReload() {
   saveFilters();
+  if (typeof renderActiveChips === 'function') renderActiveChips();
+  if (typeof updateFiltersBadge === 'function') updateFiltersBadge();
   loadFirstPage();
 }
 
@@ -641,10 +677,10 @@ function makeCard(c) {
 
   // badge analyse
   const as = c.analysis_status || 'pending';
-  if (as !== 'done') {
+  if (as !== 'analyzed') {
     const b = document.createElement('div');
     b.className = `status-badge ${as}`;
-    b.textContent = as === 'pending' ? 'à analyser' : as === 'in_progress' ? 'analyse…' : 'échec';
+    b.textContent = as === 'pending' ? 'à analyser' : as === 'processing' ? 'analyse…' : as === 'skipped' ? 'skip' : 'échec';
     thumb.appendChild(b);
   }
 
@@ -782,20 +818,196 @@ statusFilter.addEventListener('change', e => { state.filters.status = e.target.v
 analysisFilter.addEventListener('change', e => { state.filters.analysis = e.target.value; resetAndReload(); });
 
 resetFiltersBtn.addEventListener('click', () => {
-  state.filters = { ...DEFAULT_FILTERS };
+  state.filters = {
+    ...DEFAULT_FILTERS,
+    emotions: [],
+    tags: [],
+    personsNames: [],
+  };
   syncFiltersToUI();
   updateMultiSelectBtn('emotions');
   updateMultiSelectBtn('tags');
+  updateMultiSelectBtn('personsNames');
   populateMultiSelect('emotions', state.catalog.emotions);
   populateMultiSelect('tags', state.catalog.tags);
+  populateMultiSelect('personsNames', state.catalog.personsNames);
   resetAndReload();
 });
 
-toggleSecondaryBtn && toggleSecondaryBtn.addEventListener('click', () => {
-  const sec = document.querySelector('.filters-row.secondary');
-  sec.classList.toggle('open');
-  toggleSecondaryBtn.textContent = sec.classList.contains('open') ? 'Moins de filtres ↑' : 'Plus de filtres ↓';
+// ---------- DRAWER ----------
+function openDrawer() {
+  if (!filtersDrawer) return;
+  filtersDrawer.classList.add('open');
+  drawerOverlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeDrawer() {
+  if (!filtersDrawer) return;
+  filtersDrawer.classList.remove('open');
+  drawerOverlay.classList.remove('open');
+  document.body.style.overflow = '';
+}
+btnOpenDrawer && btnOpenDrawer.addEventListener('click', openDrawer);
+drawerClose && drawerClose.addEventListener('click', closeDrawer);
+drawerOverlay && drawerOverlay.addEventListener('click', closeDrawer);
+drawerApply && drawerApply.addEventListener('click', closeDrawer);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && filtersDrawer && filtersDrawer.classList.contains('open')) closeDrawer();
 });
+
+// ---------- PRESETS ----------
+const PRESETS = {
+  reel:           { usableReel: true, sort: 'quality_desc' },
+  calm:           { intensity: 'calm' },
+  intense:        { intensity: 'intense' },
+  neutral:        { intensity: 'neutral' },
+  to_analyze:     { analysis: 'pending' },
+  no_face:        { persons: '0' },
+  with_music:     { music: 'with' },
+  with_location:  { sort: 'location_asc' },
+};
+
+function applyPreset(name) {
+  const preset = PRESETS[name];
+  if (!preset) return;
+  // Réinitialiser puis appliquer le preset
+  state.filters = {
+    ...DEFAULT_FILTERS,
+    emotions: [],
+    tags: [],
+    personsNames: [],
+    ...preset,
+  };
+  syncFiltersToUI();
+  updateMultiSelectBtn('emotions');
+  updateMultiSelectBtn('tags');
+  updateMultiSelectBtn('personsNames');
+  populateMultiSelect('emotions', state.catalog.emotions);
+  populateMultiSelect('tags', state.catalog.tags);
+  populateMultiSelect('personsNames', state.catalog.personsNames);
+  // Active state visuel sur les pills preset
+  if (presetsRow) {
+    presetsRow.querySelectorAll('.preset').forEach(p => {
+      p.classList.toggle('active', p.dataset.preset === name);
+    });
+  }
+  resetAndReload();
+}
+
+if (presetsRow) {
+  presetsRow.addEventListener('click', (e) => {
+    const btn = e.target.closest('.preset');
+    if (!btn) return;
+    const name = btn.dataset.preset;
+    if (btn.classList.contains('active')) {
+      // Retirer le preset (reset)
+      btn.classList.remove('active');
+      resetFiltersBtn.click();
+    } else {
+      applyPreset(name);
+    }
+  });
+}
+
+// ---------- ACTIVE CHIPS ----------
+const FILTER_LABELS = {
+  search:       (v) => `Recherche : ${v}`,
+  status:       (v) => `Statut : ${v}`,
+  analysis:     (v) => `Analyse : ${v}`,
+  duration:     (v) => ({ short: 'Court (<15s)', medium: 'Moyen (15-60s)', long: 'Long (>60s)' }[v] || v),
+  ambiance:     (v) => `Ambiance : ${v}`,
+  movement:     (v) => `Mouvement : ${v}`,
+  lighting:     (v) => `Éclairage : ${v}`,
+  location:     (v) => `Lieu : ${v}`,
+  persons:      (v) => ({ '0': 'Sans personne', '1': '1 personne', '2+': '2+ personnes' }[v] || v),
+  intensity:    (v) => `Intensité : ${v}`,
+  music:        (v) => v === 'with' ? '🎵 Avec musique' : '🔇 Sans musique',
+  speech:       (v) => v === 'with' ? '💬 Avec paroles' : '🤐 Sans paroles',
+  usableReel:   () => '✨ Reel-ready',
+  qualityMin:   (v) => `Qualité ≥ ${v}`,
+};
+
+function isActiveValue(key, val) {
+  if (key === 'usableReel') return val === true;
+  if (key === 'qualityMin') return Number(val) > 0;
+  if (key === 'status') return val && val !== 'available'; // 'available' = défaut
+  if (key === 'sort') return false; // sort caché des chips
+  if (Array.isArray(val)) return val.length > 0;
+  return val !== '' && val != null;
+}
+
+function renderActiveChips() {
+  if (!activeChipsRow) return;
+  const chips = [];
+  const f = state.filters;
+
+  for (const [key, val] of Object.entries(f)) {
+    if (!isActiveValue(key, val)) continue;
+    if (Array.isArray(val)) {
+      val.forEach((v) => chips.push({ key, val: v, label: `${key === 'emotions' ? 'Émotion' : key === 'tags' ? 'Tag' : '👤'} : ${v}`, isMulti: true }));
+    } else if (FILTER_LABELS[key]) {
+      chips.push({ key, val, label: FILTER_LABELS[key](val), isMulti: false });
+    }
+  }
+
+  if (chips.length === 0) {
+    activeChipsRow.classList.remove('has-chips');
+    activeChipsRow.innerHTML = '';
+    return;
+  }
+
+  activeChipsRow.classList.add('has-chips');
+  activeChipsRow.innerHTML = chips.map((c, i) =>
+    `<span class="active-chip" data-key="${c.key}" data-val="${escapeAttr(String(c.val))}" data-multi="${c.isMulti ? '1' : '0'}">${escapeHtml(c.label)}<span class="x">×</span></span>`
+  ).join('') + `<button class="btn-clear-all" id="chips-clear-all">Tout effacer</button>`;
+
+  // Wire clicks
+  activeChipsRow.querySelectorAll('.active-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const k = chip.dataset.key;
+      const v = chip.dataset.val;
+      const multi = chip.dataset.multi === '1';
+      if (multi) {
+        const arr = state.filters[k];
+        const idx = arr.indexOf(v);
+        if (idx > -1) arr.splice(idx, 1);
+        updateMultiSelectBtn(k);
+        populateMultiSelect(k, state.catalog[k === 'emotions' ? 'emotions' : k === 'tags' ? 'tags' : 'personsNames']);
+      } else {
+        // Reset à valeur par défaut
+        state.filters[k] = DEFAULT_FILTERS[k];
+      }
+      syncFiltersToUI();
+      saveFilters();
+      resetAndReload();
+    });
+  });
+
+  const clearAll = document.getElementById('chips-clear-all');
+  if (clearAll) clearAll.addEventListener('click', () => resetFiltersBtn.click());
+}
+
+// ---------- BADGE COUNT ----------
+function updateFiltersBadge() {
+  if (!activeFiltersBadge) return;
+  const f = state.filters;
+  let count = 0;
+  for (const [key, val] of Object.entries(f)) {
+    if (isActiveValue(key, val)) {
+      if (Array.isArray(val)) count += val.length;
+      else count += 1;
+    }
+  }
+  if (count > 0) {
+    activeFiltersBadge.textContent = count;
+    activeFiltersBadge.style.display = 'inline-flex';
+  } else {
+    activeFiltersBadge.style.display = 'none';
+  }
+}
+
+// Premier rendu après chargement initial
+setTimeout(() => { renderActiveChips(); updateFiltersBadge(); }, 100);
 
 // ---------- SELECTION ----------
 function toggleSelection(id) {
@@ -867,6 +1079,9 @@ function openModal(id) {
   addEditableField('Tags (séparés par virgule)', 'tags', (c.tags || []).join(', '), false);
   addEditableField('Notes', 'notes', c.notes, true);
 
+  // Panneau Analyses complémentaires
+  renderSuppAnalyses(c.id);
+
   modalActions.innerHTML = '';
   const actions = [];
   actions.push({ label: '💾 Enregistrer', cls: 'primary', onClick: () => saveModal(c.id) });
@@ -906,6 +1121,184 @@ function closeModal() {
   modalVideo.pause();
   modalVideo.src = '';
   state.currentModalId = null;
+}
+
+// ---------- ANALYSES COMPLÉMENTAIRES ----------
+const SUPP_KINDS = [
+  { key: 'reel_pitch', label: '🎯 Pitchs Reel (3 angles)' },
+  { key: 'cut_points', label: '✂︎ Points de coupe' },
+  { key: 'captions', label: '📝 Captions overlay (3 stratégies)' },
+];
+
+async function renderSuppAnalyses(clipId) {
+  let section = document.getElementById('supp-section');
+  if (!section) {
+    section = document.createElement('div');
+    section.id = 'supp-section';
+    section.className = 'supp-section';
+    section.innerHTML = `
+      <div class="supp-title">Analyses complémentaires Gemini</div>
+      <div id="supp-rows"></div>
+    `;
+    modalBody.appendChild(section);
+  } else {
+    modalBody.appendChild(section);
+  }
+  const rowsWrap = section.querySelector('#supp-rows');
+  rowsWrap.innerHTML = '<div style="opacity:0.6;font-size:12px;padding:8px 0;">Chargement...</div>';
+
+  // Fetch existing rows
+  const { data, error } = await sb
+    .from('clip_supplementary_analyses')
+    .select('id,kind,status,prompt_version,result,error_message,created_at,completed_at')
+    .eq('clip_id', clipId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    rowsWrap.innerHTML = `<div style="color:#ff9a9a;font-size:12px;">Erreur : ${escapeHtml(error.message)}</div>`;
+    return;
+  }
+
+  // Garder uniquement la ligne la plus récente par kind
+  const latestByKind = {};
+  for (const r of data || []) {
+    if (!latestByKind[r.kind]) latestByKind[r.kind] = r;
+  }
+
+  rowsWrap.innerHTML = '';
+  for (const kind of SUPP_KINDS) {
+    const row = latestByKind[kind.key];
+    const kindEl = document.createElement('div');
+    kindEl.className = 'supp-kind-row';
+    const status = row?.status || 'none';
+    const chipLabel = status === 'done'
+      ? `v${row.prompt_version}`
+      : status === 'processing' ? 'en cours...'
+      : status === 'error' ? 'erreur'
+      : 'jamais';
+    kindEl.innerHTML = `
+      <span class="label">${kind.label}</span>
+      <span class="status-chip ${status}">${chipLabel}</span>
+      <div class="actions">
+        ${row && status === 'done' ? `<button class="btn-sm" data-act="view" data-kind="${kind.key}">Voir</button>` : ''}
+        <button class="btn-sm primary" data-act="run" data-kind="${kind.key}">${row ? 'Régénérer' : 'Lancer'}</button>
+      </div>
+    `;
+    rowsWrap.appendChild(kindEl);
+    kindEl.dataset.clipId = clipId;
+    kindEl.dataset.kind = kind.key;
+  }
+
+  rowsWrap.querySelectorAll('button[data-act]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const kind = btn.dataset.kind;
+      const act = btn.dataset.act;
+      const row = latestByKind[kind];
+      if (act === 'view' && row?.result) {
+        showSuppResult(btn.closest('.supp-kind-row'), kind, row.result);
+      } else if (act === 'run') {
+        runSupp(clipId, kind, btn);
+      }
+    });
+  });
+}
+
+function showSuppResult(rowEl, kind, result) {
+  // Toggle : si déjà affiché, on retire
+  const existing = rowEl.nextElementSibling;
+  if (existing && existing.classList.contains('supp-result')) {
+    existing.remove();
+    return;
+  }
+  const panel = document.createElement('div');
+  panel.className = 'supp-result';
+  panel.innerHTML = formatSuppResult(kind, result);
+  rowEl.after(panel);
+}
+
+function formatSuppResult(kind, r) {
+  try {
+    if (kind === 'reel_pitch' && Array.isArray(r.pitches)) {
+      return r.pitches.map((p, i) => `
+        <div class="pitch">
+          <h5>Pitch ${i + 1} — ${escapeHtml(p.angle || '')}</h5>
+          <div class="hook">« ${escapeHtml(p.hook || '')} »</div>
+          <div class="meta">Émotion visée : ${escapeHtml(p.target_emotion || '—')}</div>
+          <div style="margin:6px 0;">${escapeHtml(p.caption || '').replace(/\n/g, '<br>')}</div>
+          <div class="meta"><strong>CTA :</strong> ${escapeHtml(p.cta_in_caption || '')}</div>
+          <div>${(p.hashtags || []).map(h => `<span class="tag">#${escapeHtml(h)}</span>`).join('')}</div>
+          <div class="meta" style="margin-top:4px;font-style:italic;">${escapeHtml(p.rationale || '')}</div>
+        </div>
+      `).join('');
+    }
+    if (kind === 'cut_points' && Array.isArray(r.segments)) {
+      const header = r.detected_duration_seconds
+        ? `<div class="meta">Durée détectée : ${r.detected_duration_seconds}s</div>`
+        : '';
+      return header + r.segments.map((s, i) => `
+        <div class="segment">
+          <h5>Coupe ${i + 1} · ${s.start_seconds}s → ${s.end_seconds}s <span style="opacity:0.6;font-size:12px;">(${s.duration_seconds}s)</span></h5>
+          <div class="meta">${escapeHtml(s.label || '')} · <span class="tag">${escapeHtml(s.use_case || '')}</span> · qualité ${s.quality_for_cut}/10</div>
+          <div style="opacity:0.85;">${escapeHtml(s.rationale || '')}</div>
+        </div>
+      `).join('');
+    }
+    if (kind === 'captions' && Array.isArray(r.strategies)) {
+      return r.strategies.map((s, i) => `
+        <div class="strategy">
+          <h5>${escapeHtml(s.strategy_name || 'Stratégie ' + (i + 1))}</h5>
+          <div class="meta">Émotion visée : ${escapeHtml(s.target_emotion || '—')}</div>
+          ${(s.captions || []).map(c => `
+            <div style="margin:4px 0;padding:4px 8px;background:rgba(255,255,255,0.03);border-radius:4px;font-size:12px;">
+              <span style="opacity:0.6;font-variant-numeric:tabular-nums;">${c.start_seconds}s → ${c.end_seconds}s</span>
+              <span class="tag">${escapeHtml(c.position || '')}</span>
+              <span class="tag">${escapeHtml(c.role || '')}</span>
+              <div style="margin-top:2px;">${escapeHtml(c.text || '')}</div>
+            </div>
+          `).join('')}
+          <div class="meta" style="margin-top:6px;"><strong>CTA final :</strong> ${escapeHtml(s.final_cta || '')}</div>
+        </div>
+      `).join('');
+    }
+    return `<pre>${escapeHtml(JSON.stringify(r, null, 2))}</pre>`;
+  } catch (e) {
+    return `<pre>${escapeHtml(JSON.stringify(r, null, 2))}</pre>`;
+  }
+}
+
+async function runSupp(clipId, kind, btn) {
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Analyse...';
+  const row = btn.closest('.supp-kind-row');
+  const chip = row?.querySelector('.status-chip');
+  if (chip) {
+    chip.className = 'status-chip processing';
+    chip.textContent = 'en cours...';
+  }
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/analyze-clip-supplementary`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ clip_id: clipId, kind, force: true }),
+    });
+    const json = await resp.json();
+    if (!resp.ok || !json.ok) throw new Error(json.error || `HTTP ${resp.status}`);
+    // Recharger la section
+    await renderSuppAnalyses(clipId);
+  } catch (e) {
+    console.error('runSupp', e);
+    if (chip) {
+      chip.className = 'status-chip error';
+      chip.textContent = 'erreur';
+    }
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+    alert(`Analyse ${kind} échouée : ${e.message}`);
+  }
 }
 
 modalClose.addEventListener('click', closeModal);
