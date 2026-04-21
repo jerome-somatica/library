@@ -992,7 +992,7 @@
     grid.innerHTML = SUPP_KINDS.map(k => {
       const b = buckets[k.key];
       return `
-        <div class="supp-kind-card">
+        <div class="supp-kind-card" data-kind="${escapeAttr(k.key)}">
           <div class="kind-name">${escapeHtml(k.label)}</div>
           <div style="font-size:11px;opacity:0.65;margin-bottom:8px">${escapeHtml(k.desc)}</div>
           <div class="counts">
@@ -1001,9 +1001,28 @@
             <span class="c-error">${b.error} err</span>
           </div>
           <div style="font-size:11px;opacity:0.55;margin-top:6px">Total : ${b.total}</div>
+          <div class="batch-controls">
+            <select class="supp-batch-filter" data-kind="${escapeAttr(k.key)}">
+              <option value="missing">Manquants</option>
+              <option value="error">Erreurs</option>
+              <option value="all">Tout (re-run)</option>
+            </select>
+            <button class="supp-batch-btn" data-kind="${escapeAttr(k.key)}">Lancer batch</button>
+          </div>
+          <div class="batch-progress" data-kind="${escapeAttr(k.key)}"></div>
         </div>
       `;
     }).join('');
+
+    // Wiring des boutons batch (nouvellement injectés)
+    grid.querySelectorAll('.supp-batch-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const kind = btn.dataset.kind;
+        const sel = grid.querySelector(`.supp-batch-filter[data-kind="${kind}"]`);
+        const filter = sel ? sel.value : 'missing';
+        runSuppBatchForKind(kind, filter, btn);
+      });
+    });
 
     if (status) status.textContent = `Actualisé ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
   }
@@ -1014,6 +1033,173 @@
       btn.addEventListener('click', renderSuppBatch);
       btn.dataset.bound = '1';
     }
+    const vbaseBtn = $('#vbase-batch-run');
+    if (vbaseBtn && !vbaseBtn.dataset.bound) {
+      vbaseBtn.addEventListener('click', runVBaseBatch);
+      vbaseBtn.dataset.bound = '1';
+    }
+  }
+
+  // Rate limit : 2s entre appels Gemini pour rester en dessous des limites Tier 1.
+  const SUPP_BATCH_DELAY_MS = 2000;
+  // Plafond de sécurité pour éviter de lancer 1000 clips par erreur.
+  const SUPP_BATCH_MAX = 200;
+  const SUPP_EDGE_URL = 'https://zrdlvoovrnglxcgoyyeb.supabase.co/functions/v1/analyze-clip-supplementary';
+  // Clé publique (anon) Supabase, identique à celle utilisée dans app.js.
+  const SUPP_ANON_KEY = 'sb_publishable_ukrn7WQHygY5FUtNiMxxfA_E-esyAUs';
+
+  async function collectClipIdsForSuppBatch(kind, filter) {
+    // Récupère la liste d'IDs de clips à traiter selon le filtre.
+    if (filter === 'error') {
+      // Clips qui ont une ligne en error pour ce kind.
+      const { data, error } = await sb
+        .from('clip_supplementary_analyses')
+        .select('clip_id')
+        .eq('kind', kind)
+        .eq('status', 'error');
+      if (error) throw error;
+      return Array.from(new Set((data || []).map(r => r.clip_id)));
+    }
+    if (filter === 'missing') {
+      // Clips sans ligne done pour ce kind.
+      // 1. Tous les clips analysés par v-base (done/analyzed)
+      const { data: allClips, error: e1 } = await sb
+        .from('video_library')
+        .select('id')
+        .in('analysis_status', ['done', 'analyzed']);
+      if (e1) throw e1;
+      // 2. Clips qui ont déjà une ligne done pour ce kind
+      const { data: existing, error: e2 } = await sb
+        .from('clip_supplementary_analyses')
+        .select('clip_id')
+        .eq('kind', kind)
+        .eq('status', 'done');
+      if (e2) throw e2;
+      const doneSet = new Set((existing || []).map(r => r.clip_id));
+      return (allClips || []).map(r => r.id).filter(id => !doneSet.has(id));
+    }
+    if (filter === 'all') {
+      // Re-run sur tout ce qui a été analysé par v-base.
+      const { data, error } = await sb
+        .from('video_library')
+        .select('id')
+        .in('analysis_status', ['done', 'analyzed']);
+      if (error) throw error;
+      return (data || []).map(r => r.id);
+    }
+    return [];
+  }
+
+  async function runSuppBatchForKind(kind, filter, btnEl) {
+    const card = btnEl.closest('.supp-kind-card');
+    const progressEl = card ? card.querySelector('.batch-progress') : null;
+    const setProgress = (txt) => { if (progressEl) progressEl.textContent = txt; };
+
+    setProgress('Recherche des clips...');
+    btnEl.disabled = true;
+
+    let ids;
+    try {
+      ids = await collectClipIdsForSuppBatch(kind, filter);
+    } catch (err) {
+      setProgress(`Erreur : ${err.message}`);
+      btnEl.disabled = false;
+      return;
+    }
+
+    if (!ids.length) {
+      setProgress('Aucun clip à traiter.');
+      btnEl.disabled = false;
+      return;
+    }
+
+    let toProcess = ids;
+    let capped = false;
+    if (toProcess.length > SUPP_BATCH_MAX) {
+      toProcess = toProcess.slice(0, SUPP_BATCH_MAX);
+      capped = true;
+    }
+
+    const confirmMsg = `Lancer ${kind} sur ${toProcess.length} clip${toProcess.length > 1 ? 's' : ''}${capped ? ` (plafonné à ${SUPP_BATCH_MAX} sur ${ids.length})` : ''} ?\nDélai ${SUPP_BATCH_DELAY_MS/1000}s entre chaque, temps estimé : ${Math.round(toProcess.length * SUPP_BATCH_DELAY_MS / 1000 / 60 * 10) / 10} min.`;
+    if (!confirm(confirmMsg)) {
+      setProgress('Annulé.');
+      btnEl.disabled = false;
+      return;
+    }
+
+    let ok = 0, fail = 0, skipped = 0;
+    for (let i = 0; i < toProcess.length; i++) {
+      const clipId = toProcess[i];
+      setProgress(`${i + 1}/${toProcess.length} — ok:${ok} skip:${skipped} err:${fail}`);
+      try {
+        const resp = await fetch(SUPP_EDGE_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPP_ANON_KEY}`,
+          },
+          body: JSON.stringify({ clip_id: clipId, kind, force: filter === 'all' }),
+        });
+        if (!resp.ok) {
+          fail++;
+        } else {
+          const r = await resp.json();
+          if (r.skipped) skipped++;
+          else ok++;
+        }
+      } catch (_) {
+        fail++;
+      }
+      if (i < toProcess.length - 1) await sleep(SUPP_BATCH_DELAY_MS);
+    }
+
+    setProgress(`Terminé. ok:${ok} skip:${skipped} err:${fail} (sur ${toProcess.length})`);
+    logLine(`Supp ${kind} (${filter}) : ${ok} ok / ${skipped} skip / ${fail} err`, fail ? 'error' : 'ok');
+    btnEl.disabled = false;
+    renderSuppBatch();
+  }
+
+  async function runVBaseBatch() {
+    const filter = $('#vbase-filter').value;
+    const btn = $('#vbase-batch-run');
+    const status = $('#vbase-batch-status');
+    if (!filter || !btn) return;
+
+    const labels = {
+      error: 'les clips en erreur',
+      missing: 'les clips jamais analysés',
+      done: 'tous les clips déjà done (re-run)',
+      all: 'TOUS les clips (sauf processing)',
+    };
+    if (!confirm(`Marquer en pending : ${labels[filter] || filter} ?\nLe cron Gemini les reprendra sous 2 min.`)) {
+      status.textContent = 'Annulé.';
+      return;
+    }
+
+    btn.disabled = true;
+    status.textContent = 'Mise à jour...';
+
+    let q = sb.from('video_library').update({ analysis_status: 'pending', analysis_error: null }, { count: 'exact' });
+    if (filter === 'error') {
+      q = q.eq('analysis_status', 'error');
+    } else if (filter === 'missing') {
+      q = q.is('analysis_status', null);
+    } else if (filter === 'done') {
+      q = q.in('analysis_status', ['done', 'analyzed']);
+    } else if (filter === 'all') {
+      q = q.neq('analysis_status', 'processing');
+    }
+
+    const { error, count } = await q;
+    btn.disabled = false;
+    if (error) {
+      status.textContent = `Erreur : ${error.message}`;
+      logLine(`V-base batch ${filter} : ${error.message}`, 'error');
+      return;
+    }
+    status.textContent = `${count || 0} clips → pending`;
+    logLine(`V-base batch ${filter} : ${count || 0} clips remis en pending`, 'ok');
+    setTimeout(refreshGeminiStats, 1500);
   }
 
   // ------------------------------------------------------------

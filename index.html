@@ -1006,6 +1006,56 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 .supp-kind-card .counts .c-done { color: #a8e6cf; }
 .supp-kind-card .counts .c-processing { color: #ffd27a; }
 .supp-kind-card .counts .c-error { color: #ff9a9a; }
+.supp-kind-card .batch-controls {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.supp-kind-card .batch-controls select {
+  flex: 1;
+  min-width: 110px;
+  font-size: 12px;
+  padding: 5px 8px;
+  background: rgba(0,0,0,0.3);
+  color: #ebd3a0;
+  border: 1px solid rgba(235,211,160,0.2);
+  border-radius: 6px;
+}
+.supp-kind-card .batch-controls button {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(168,230,207,0.3);
+  background: rgba(168,230,207,0.15);
+  color: #a8e6cf;
+  cursor: pointer;
+}
+.supp-kind-card .batch-controls button:hover:not(:disabled) { background: rgba(168,230,207,0.25); }
+.supp-kind-card .batch-controls button:disabled { opacity: 0.5; cursor: wait; }
+.supp-kind-card .batch-progress {
+  font-size: 11px;
+  opacity: 0.75;
+  margin-top: 6px;
+  min-height: 14px;
+}
+/* Relance v-base */
+.vbase-batch-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.vbase-batch-row select {
+  font-size: 13px;
+  padding: 6px 10px;
+  background: rgba(0,0,0,0.3);
+  color: #ebd3a0;
+  border: 1px solid rgba(235,211,160,0.2);
+  border-radius: 6px;
+}
 @media (max-width: 700px) {
   .supp-kinds-grid { grid-template-columns: 1fr; }
 }
@@ -1418,9 +1468,26 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
       </div>
 
       <div class="maint-section">
+        <h3>Relancer l'analyse v-base</h3>
+        <p style="font-size:12.5px;opacity:0.7;margin-bottom:10px;">
+          Remet des clips en <code>pending</code>. Le cron Gemini les reprendra au prochain tour (chaque 2 min).
+        </p>
+        <div class="vbase-batch-row">
+          <select id="vbase-filter">
+            <option value="error">Uniquement les erreurs</option>
+            <option value="missing">Jamais analysés (NULL)</option>
+            <option value="done">Re-run sur les done (tout recalculer)</option>
+            <option value="all">TOUT relancer (prudence)</option>
+          </select>
+          <button class="maint-btn primary" id="vbase-batch-run">Marquer en pending</button>
+          <span class="maint-status" id="vbase-batch-status"></span>
+        </div>
+      </div>
+
+      <div class="maint-section">
         <h3>Analyses complémentaires</h3>
         <p style="font-size:12.5px;opacity:0.7;margin-bottom:10px;">
-          Analyses on-demand par clip (pitchs Reel, points de coupe, captions). Lancer une analyse depuis la fiche d'un clip dans la galerie.
+          Analyses on-demand par clip (pitchs Reel, points de coupe, captions). Lancer à l'unité depuis la fiche clip, ou en batch par kind via les cartes ci-dessous.
         </p>
         <div class="supp-kinds-grid" id="supp-kinds-grid">
           <!-- rempli par admin.js -->

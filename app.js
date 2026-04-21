@@ -24,7 +24,7 @@ const LIGHT_COLS = [
   'id', 'file_name', 'r2_url', 'r2_key', 'thumbnail_url', 'thumbnail_generated_at',
   'duration_seconds', 'width', 'height', 'size_bytes',
   'created_at_source', 'created_at', 'updated_at',
-  'status', 'analysis_status', 'analyzed_at',
+  'status', 'analysis_status', 'analyzed_at', 'analysis_prompt_version',
   'description_short', 'notes', 'tags',
   'ambiance', 'movement', 'lighting',
   'quality_score', 'persons_count', 'persons_detected',
@@ -1066,6 +1066,7 @@ function openModal(id) {
     { label: 'Usable Reel', value: c.usable_for_reel ? '✨ oui' : 'non' },
     { label: 'Statut', value: c.status || 'available' },
     { label: 'Analyse', value: c.analysis_status || 'pending' },
+    { label: 'Analysé le', value: c.analyzed_at ? `${fmtDate(c.analyzed_at)} · prompt v${c.analysis_prompt_version ?? '?'}` : '—' },
   ];
   for (const r of rows) {
     const row = document.createElement('div');
@@ -1176,9 +1177,13 @@ async function renderSuppAnalyses(clipId) {
       : status === 'processing' ? 'en cours...'
       : status === 'error' ? 'erreur'
       : 'jamais';
+    const metaDate = status === 'done' && row?.completed_at
+      ? `<span class="supp-meta" style="opacity:0.55;font-size:11px;margin-left:6px;">${fmtDate(row.completed_at)}</span>`
+      : '';
     kindEl.innerHTML = `
       <span class="label">${kind.label}</span>
       <span class="status-chip ${status}">${chipLabel}</span>
+      ${metaDate}
       <div class="actions">
         ${row && status === 'done' ? `<button class="btn-sm" data-act="view" data-kind="${kind.key}">Voir</button>` : ''}
         <button class="btn-sm primary" data-act="run" data-kind="${kind.key}">${row ? 'Régénérer' : 'Lancer'}</button>
