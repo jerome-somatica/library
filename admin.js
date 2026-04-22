@@ -25,6 +25,7 @@
     const tabs = $$('#view-tabs .view-tab');
     const views = {
       gallery: $('#view-gallery'),
+      montees: $('#view-montees'),
       faces: $('#view-faces'),
       ai: $('#view-ai'),
       dupes: $('#view-dupes'),
@@ -41,6 +42,7 @@
         });
 
         // Chargements paresseux à la 1re ouverture
+        if (target === 'montees') renderMontees();
         if (target === 'faces') renderFaces();
         if (target === 'dupes') renderDupes();
         if (target === 'maintenance') onMaintenanceOpen();
@@ -99,6 +101,165 @@
     el.prepend(line);
     // Garder les 200 dernières
     while (el.childNodes.length > 200) el.removeChild(el.lastChild);
+  }
+
+  // ------------------------------------------------------------
+  // Montées (vidéos assemblées = feed_images.video_url non null)
+  // ------------------------------------------------------------
+  let monteesState = { loaded: false, loading: false, items: [], feeds: {} };
+
+  function fmtDateShort(iso) {
+    if (!iso) return '—';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+        + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    } catch (_) { return iso; }
+  }
+
+  async function fetchMontees() {
+    const sb = window.sb;
+    if (!sb) throw new Error('Supabase client non disponible');
+
+    // Récupérer d'abord la liste des feeds pour le mapping réseau
+    const { data: feeds, error: errFeeds } = await sb
+      .from('feeds')
+      .select('id, name');
+    if (errFeeds) throw errFeeds;
+    monteesState.feeds = {};
+    (feeds || []).forEach((f) => { monteesState.feeds[f.id] = f; });
+
+    // Peupler le select réseau
+    const selFeed = $('#montees-filter-feed');
+    if (selFeed && selFeed.options.length <= 1) {
+      (feeds || []).forEach((f) => {
+        const opt = document.createElement('option');
+        opt.value = f.id;
+        opt.textContent = f.name || 'Feed';
+        selFeed.appendChild(opt);
+      });
+    }
+
+    // Récupérer les vidéos montées (video_url non null)
+    const { data, error } = await sb
+      .from('feed_images')
+      .select('id, feed_id, prefix_code, subject, notion_page_id, video_url, cover_url, image_url, edit_project_id, review_status, scheduled_date, updated_at, content_type')
+      .not('video_url', 'is', null)
+      .order('scheduled_date', { ascending: false, nullsFirst: false })
+      .limit(200);
+    if (error) throw error;
+
+    monteesState.items = data || [];
+    monteesState.loaded = true;
+  }
+
+  function filterMontees() {
+    const q = ($('#montees-search')?.value || '').trim().toLowerCase();
+    const feedId = $('#montees-filter-feed')?.value || '';
+    const status = $('#montees-filter-status')?.value || '';
+    return monteesState.items.filter((it) => {
+      if (feedId && it.feed_id !== feedId) return false;
+      if (status && it.review_status !== status) return false;
+      if (q) {
+        const hay = `${it.prefix_code || ''} ${it.subject || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderMonteesGrid() {
+    const grid = $('#montees-grid');
+    const countEl = $('#montees-count');
+    if (!grid) return;
+    const list = filterMontees();
+    countEl.textContent = `${list.length} / ${monteesState.items.length}`;
+
+    if (!list.length) {
+      grid.innerHTML = '<div class="maint-status">Aucune vidéo montée pour ces filtres.</div>';
+      return;
+    }
+
+    const statusLabels = {
+      approved: 'Programmé',
+      published: 'Publié',
+      pending: 'Review',
+      rejected: 'Refusé',
+      none: '—',
+    };
+
+    grid.innerHTML = list.map((it) => {
+      const feed = monteesState.feeds[it.feed_id];
+      const feedName = feed ? (feed.name || 'Feed') : '—';
+      const thumb = it.cover_url || it.image_url || '';
+      const prefix = it.prefix_code || '—';
+      const title = (it.subject || '').replace(/"/g, '&quot;');
+      const statusKey = it.review_status || 'none';
+      const statusLabel = statusLabels[statusKey] || statusKey;
+      const date = fmtDateShort(it.scheduled_date);
+      const notionUrl = it.notion_page_id
+        ? `https://www.notion.so/${it.notion_page_id.replace(/-/g, '')}`
+        : '';
+      const editUrl = it.edit_project_id
+        ? `https://somatica-edit.netlify.app/?project=${encodeURIComponent(it.edit_project_id)}`
+        : '';
+
+      return `
+        <div class="montee-card" data-id="${it.id}">
+          <div class="montee-thumb">
+            ${thumb
+              ? `<img src="${thumb}" alt="" loading="lazy">`
+              : `<video src="${it.video_url}" preload="metadata" muted></video>`}
+            <div class="montee-badge">${prefix}</div>
+            <div class="montee-badge-status ${statusKey}">${statusLabel}</div>
+          </div>
+          <div class="montee-info">
+            <div class="montee-title" title="${title}">${title || prefix}</div>
+            <div class="montee-meta">
+              <span>${feedName}</span>
+              <span>${date}</span>
+            </div>
+          </div>
+          <div class="montee-actions">
+            <a href="${it.video_url}" target="_blank" rel="noopener">MP4</a>
+            ${notionUrl ? `<a href="${notionUrl}" target="_blank" rel="noopener">Notion</a>` : ''}
+            ${editUrl ? `<a href="${editUrl}" target="_blank" rel="noopener">Edit</a>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function renderMontees(force = false) {
+    const grid = $('#montees-grid');
+    if (!grid) return;
+    if (monteesState.loading) return;
+    if (monteesState.loaded && !force) {
+      renderMonteesGrid();
+      return;
+    }
+    monteesState.loading = true;
+    grid.innerHTML = '<div class="loading">Chargement des vidéos montées...</div>';
+    try {
+      await fetchMontees();
+      renderMonteesGrid();
+    } catch (e) {
+      console.error('[montees]', e);
+      grid.innerHTML = `<div class="error-msg">Erreur : ${e.message || e}</div>`;
+    } finally {
+      monteesState.loading = false;
+    }
+  }
+
+  function setupMonteesFilters() {
+    const s = $('#montees-search');
+    const ff = $('#montees-filter-feed');
+    const fs = $('#montees-filter-status');
+    const btn = $('#montees-refresh');
+    if (s) s.addEventListener('input', () => renderMonteesGrid());
+    if (ff) ff.addEventListener('change', () => renderMonteesGrid());
+    if (fs) fs.addEventListener('change', () => renderMonteesGrid());
+    if (btn) btn.addEventListener('click', () => renderMontees(true));
   }
 
   // ------------------------------------------------------------
@@ -1227,6 +1388,7 @@
     if (!$('#view-tabs')) return; // Pas la bonne page
     setupTabs();
     setupMaintenanceHandlers();
+    setupMonteesFilters();
   }
 
   if (document.readyState === 'loading') {

@@ -26,6 +26,35 @@ header .title {
 }
 header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
 
+/* Picker banner : mode sélecteur depuis SomaticaEdit */
+.picker-banner {
+  display: none;
+  position: sticky; top: 0; z-index: 60;
+  background: linear-gradient(90deg, rgba(120,160,220,0.95), rgba(168,192,226,0.95));
+  color: #0a1a2e;
+  padding: 10px 20px;
+  font-size: 13px; font-weight: 500;
+  align-items: center; gap: 14px;
+  border-bottom: 1px solid rgba(10,26,46,0.2);
+}
+.picker-banner .pb-icon { font-size: 18px; }
+.picker-banner .pb-text { flex: 1; line-height: 1.35; }
+.picker-banner .pb-id {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  background: rgba(10,26,46,0.12);
+  padding: 2px 6px; border-radius: 4px;
+  font-weight: 600;
+}
+.picker-banner .pb-hint { opacity: 0.75; font-size: 12px; }
+.picker-banner .pb-cancel {
+  background: rgba(10,26,46,0.12); color: #0a1a2e;
+  border: none; border-radius: 6px;
+  padding: 6px 12px; font-size: 12px; font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+}
+.picker-banner .pb-cancel:hover { background: rgba(10,26,46,0.2); }
+
 /* Filters bar */
 .filters {
   background: rgba(13, 30, 37, 0.95);
@@ -241,6 +270,13 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
   background: rgba(168, 230, 168, 0.9); color: #0a2a0a;
   padding: 2px 6px; border-radius: 4px;
   font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+}
+.card .usage-badge {
+  position: absolute; top: 32px; left: 8px;
+  background: rgba(120, 160, 220, 0.92); color: #0a1a2e;
+  padding: 2px 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+  cursor: help;
 }
 .card .quality-score {
   position: absolute; top: 8px; right: 8px;
@@ -1143,6 +1179,96 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
   border-radius: 8px; padding: 14px; font-size: 13px;
   margin-bottom: 18px;
 }
+
+/* ---------- Montées (vidéos assemblées) ---------- */
+.montees-wrap { padding: 16px 20px 40px; max-width: 1400px; margin: 0 auto; }
+.montees-toolbar {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 8px; flex-wrap: wrap;
+}
+.montees-title {
+  font-size: 18px; font-weight: 600; color: #ebd3a0;
+  display: flex; align-items: center; gap: 8px;
+}
+.montees-count {
+  font-size: 12px; font-weight: 500; color: rgba(235,211,160,0.55);
+  background: rgba(235,211,160,0.08); padding: 2px 8px; border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.montees-actions { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.montees-actions input, .montees-actions select {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(235,211,160,0.15);
+  color: #ebd3a0; border-radius: 8px; padding: 8px 12px; font-size: 13px;
+}
+.montees-actions input:focus, .montees-actions select:focus {
+  outline: none; border-color: rgba(235,211,160,0.4);
+}
+.montees-actions input { min-width: 200px; }
+.montees-legend {
+  font-size: 12px; color: rgba(235,211,160,0.55);
+  margin-bottom: 16px; line-height: 1.5;
+}
+.montees-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+.montee-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(235,211,160,0.1);
+  border-radius: 12px; overflow: hidden;
+  transition: border-color 0.15s, transform 0.15s;
+  display: flex; flex-direction: column;
+}
+.montee-card:hover {
+  border-color: rgba(235,211,160,0.3);
+  transform: translateY(-2px);
+}
+.montee-thumb {
+  position: relative; aspect-ratio: 9/16;
+  background: #000; overflow: hidden;
+}
+.montee-thumb img, .montee-thumb video {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.montee-badge {
+  position: absolute; top: 8px; left: 8px;
+  background: rgba(0,0,0,0.7); color: #ebd3a0;
+  padding: 3px 8px; border-radius: 6px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+}
+.montee-badge-status {
+  position: absolute; top: 8px; right: 8px;
+  padding: 3px 8px; border-radius: 6px;
+  font-size: 10px; font-weight: 600;
+}
+.montee-badge-status.approved { background: #3b82f6; color: #fff; }
+.montee-badge-status.published { background: #22c55e; color: #000; }
+.montee-badge-status.pending { background: #f59e0b; color: #000; }
+.montee-badge-status.rejected { background: #ef4444; color: #fff; }
+.montee-info { padding: 10px 12px; }
+.montee-title {
+  font-size: 13px; font-weight: 600; color: #ebd3a0;
+  margin-bottom: 4px; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.montee-meta {
+  font-size: 11px; color: rgba(235,211,160,0.55);
+  font-variant-numeric: tabular-nums;
+  display: flex; justify-content: space-between;
+}
+.montee-actions {
+  display: flex; gap: 4px; padding: 0 10px 10px;
+}
+.montee-actions a {
+  flex: 1; text-align: center; padding: 6px 4px;
+  font-size: 11px; font-weight: 500;
+  color: #ebd3a0; background: rgba(235,211,160,0.08);
+  border-radius: 6px; text-decoration: none;
+  transition: background 0.15s;
+}
+.montee-actions a:hover { background: rgba(235,211,160,0.18); }
 </style>
 </head>
 <body>
@@ -1165,6 +1291,14 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 </div>
 
 <div id="app" style="display:none">
+  <div class="picker-banner" id="picker-banner">
+    <span class="pb-icon">🎬</span>
+    <div class="pb-text">
+      <div>Mode sélection pour <span class="pb-id" id="picker-return-id">—</span></div>
+      <div class="pb-hint">Coche les clips dans l'ordre souhaité puis clique « Valider la sélection » en bas.</div>
+    </div>
+    <a class="pb-cancel" id="picker-cancel" href="#">Annuler</a>
+  </div>
   <header>
     <div class="title">
       Somatica Library
@@ -1174,6 +1308,7 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 
   <nav class="view-tabs" id="view-tabs">
     <button class="view-tab active" data-view="gallery">Galerie</button>
+    <button class="view-tab" data-view="montees">Montées</button>
     <button class="view-tab" data-view="faces">Visages</button>
     <button class="view-tab" data-view="ai">Analyse IA</button>
     <button class="view-tab" data-view="dupes">Doublons</button>
@@ -1383,6 +1518,14 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
             <option value="failed">Échec</option>
           </select>
         </div>
+        <div class="drawer-field">
+          <label for="usage-filter">↻ Utilisation dans Reels</label>
+          <select id="usage-filter" title="Filtrer par usage dans Reels">
+            <option value="">Tous</option>
+            <option value="unused">Non utilisé</option>
+            <option value="used">Utilisé au moins 1x</option>
+          </select>
+        </div>
       </section>
 
     </div>
@@ -1398,6 +1541,34 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
   </div>
 
   </div><!-- /#view-gallery -->
+
+  <div class="view" id="view-montees">
+    <div class="montees-wrap">
+      <div class="montees-toolbar">
+        <div class="montees-title">Vidéos montées <span class="montees-count" id="montees-count"></span></div>
+        <div class="montees-actions">
+          <input type="search" id="montees-search" placeholder="Rechercher par prefix, titre...">
+          <select id="montees-filter-feed">
+            <option value="">Tous les réseaux</option>
+          </select>
+          <select id="montees-filter-status">
+            <option value="">Tous statuts</option>
+            <option value="approved">Programmé</option>
+            <option value="published">Publié</option>
+            <option value="pending">En review</option>
+            <option value="rejected">Refusé</option>
+          </select>
+          <button class="maint-btn" id="montees-refresh">↻</button>
+        </div>
+      </div>
+      <div class="montees-legend">
+        Toutes les vidéos assemblées (Reels) poussées au feed, triées par date de publication. Clique sur une carte pour ouvrir le MP4, la fiche Notion ou le projet SomaticaEdit.
+      </div>
+      <div class="montees-grid" id="montees-grid">
+        <div class="loading">Chargement des vidéos montées...</div>
+      </div>
+    </div>
+  </div><!-- /#view-montees -->
 
   <div class="view" id="view-faces">
     <div class="faces-wrap">

@@ -18,6 +18,15 @@ const SUPABASE_ANON_KEY = 'sb_publishable_ukrn7WQHygY5FUtNiMxxfA_E-esyAUs';
 const JEROME_USER_ID = 'ffaaef6d-7636-417a-837c-7823751adcdd';
 const PAGE_SIZE = 60;
 
+// ---------- PICKER MODE (retour SomaticaEdit) ----------
+// Activé via ?mode=picker&return=<edit_project_id>
+// Quand actif : bouton "Envoyer" devient "Valider la sélection",
+// la sélection est injectée comme layer video-sequence dans le projet Edit existant,
+// puis on redirige vers SomaticaEdit (?p=<return_id>).
+const _urlParams = new URLSearchParams(window.location.search);
+const PICKER_MODE = _urlParams.get('mode') === 'picker';
+const RETURN_PROJECT_ID = _urlParams.get('return') || '';
+
 // Colonnes utiles UNIQUEMENT. On exclut les champs lourds (transcript, analysis_raw)
 // qui ne servent pas au rendu grid et plombaient le download.
 const LIGHT_COLS = [
@@ -35,6 +44,9 @@ const LIGHT_COLS = [
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
+window.sb = sb;
+window.SUPABASE_URL = SUPABASE_URL;
+window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 
 // ---------- STATE ----------
 const DEFAULT_FILTERS = {
@@ -53,6 +65,7 @@ const DEFAULT_FILTERS = {
   music: '',     // '' | 'with' | 'without'
   speech: '',    // '' | 'with' | 'without'
   usableReel: false,
+  usage: '',     // '' | 'unused' | 'used'
   emotions: [],  // multi
   tags: [],      // multi
   personsNames: [],  // multi (noms Apple)
@@ -507,6 +520,7 @@ async function loadFirstPage() {
   state.finished = false;
   state.totalRows = null;
   state.filteredCount = null;
+  _usedIdsCache = null; // force refresh (peut-être qu'un clip vient d'être utilisé)
   gallery.innerHTML = '<div class="loading">Chargement...</div>';
   await loadMore();
 }
@@ -516,7 +530,24 @@ async function loadMore() {
   state.loading = true;
   const from = state.page * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
-  const { data, error, count } = await buildQuery().range(from, to);
+  let q = buildQuery();
+  // Si filtre usage, on doit d'abord récupérer les IDs concernés (unused = NOT IN, used = IN)
+  if (state.filters.usage) {
+    const usedIds = await getAllUsedVideoIds();
+    if (state.filters.usage === 'unused') {
+      if (usedIds.length) q = q.not('id', 'in', `(${usedIds.map(id => `"${id}"`).join(',')})`);
+    } else if (state.filters.usage === 'used') {
+      if (!usedIds.length) {
+        state.loading = false;
+        state.finished = true;
+        state.filteredCount = 0;
+        renderGallery();
+        return;
+      }
+      q = q.in('id', usedIds);
+    }
+  }
+  const { data, error, count } = await q.range(from, to);
   state.loading = false;
   if (error) {
     console.error(error);
@@ -532,10 +563,45 @@ async function loadMore() {
     renderGallery();
     return;
   }
+  // Enrichir avec l'usage (vw_video_library_usage) avant d'afficher
+  await enrichWithUsage(data);
   state.clips.push(...data);
   state.page += 1;
   if (data.length < PAGE_SIZE) state.finished = true;
   renderGallery();
+}
+
+// Cache des IDs "utilisés" pour le filtre usage (rechargé quand filtre change)
+let _usedIdsCache = null;
+async function getAllUsedVideoIds() {
+  if (_usedIdsCache) return _usedIdsCache;
+  const { data, error } = await sb
+    .from('reel_library_sources')
+    .select('video_library_id');
+  if (error) { console.warn('getAllUsedVideoIds', error); return []; }
+  const uniq = [...new Set((data || []).map(r => r.video_library_id).filter(Boolean))];
+  _usedIdsCache = uniq;
+  return uniq;
+}
+
+// Pour chaque clip chargé, récupère son usage (count, feed_image_ids, last_used_at)
+// depuis vw_video_library_usage et l'attache au clip.
+async function enrichWithUsage(clips) {
+  if (!clips || !clips.length) return;
+  const ids = clips.map(c => c.id);
+  const { data, error } = await sb
+    .from('vw_video_library_usage')
+    .select('video_library_id,usage_count,feed_image_ids,last_used_at')
+    .in('video_library_id', ids);
+  if (error) { console.warn('enrichWithUsage', error); return; }
+  const byId = {};
+  for (const row of data || []) byId[row.video_library_id] = row;
+  for (const c of clips) {
+    const row = byId[c.id];
+    c.usage_count = row?.usage_count || 0;
+    c.usage_feed_image_ids = row?.feed_image_ids || [];
+    c.usage_last_at = row?.last_used_at || null;
+  }
 }
 
 function resetAndReload() {
@@ -700,6 +766,19 @@ function makeCard(c) {
     thumb.appendChild(ub);
   }
 
+  // badge "Utilisé Nx" si le clip apparaît déjà dans au moins un Reel
+  if (c.usage_count && c.usage_count > 0) {
+    const usb = document.createElement('div');
+    usb.className = 'usage-badge';
+    usb.textContent = `↻ ${c.usage_count}`;
+    const lastDate = c.usage_last_at ? fmtDate(c.usage_last_at) : '';
+    const countLabel = c.usage_count === 1 ? '1 Reel' : `${c.usage_count} Reels`;
+    usb.title = lastDate
+      ? `Utilisé dans ${countLabel} — dernier le ${lastDate}`
+      : `Utilisé dans ${countLabel}`;
+    thumb.appendChild(usb);
+  }
+
   // durée
   const dur = document.createElement('div');
   dur.className = 'duration';
@@ -764,6 +843,8 @@ function syncFiltersToUI() {
   if (movementFilter) movementFilter.value = f.movement;
   if (lightingFilter) lightingFilter.value = f.lighting;
   if (locationFilter) locationFilter.value = f.location;
+  const uf = document.getElementById('usage-filter');
+  if (uf) uf.value = f.usage || '';
 }
 
 searchInput.addEventListener('input', debounce(e => {
@@ -1368,6 +1449,18 @@ async function sendToSomaticaEdit() {
   const ordered = state.clips.filter(c => state.selection.has(c.id));
   if (!ordered.length) { toast('Sélection vide', 'error'); return; }
 
+  // Mode PICKER : on renvoie les clips vers un projet SomaticaEdit existant
+  if (PICKER_MODE && RETURN_PROJECT_ID) {
+    return sendToSomaticaEditPicker(ordered);
+  }
+
+  // Mode STANDARD (hérité) : on crée un nouveau projet brouillon
+  return sendToSomaticaEditDraft(ordered);
+}
+
+// Mode STANDARD : crée un nouveau projet Reel brouillon (scène par clip).
+// Conservé pour rétro-compatibilité si on ouvre Library sans ?mode=picker.
+async function sendToSomaticaEditDraft(ordered) {
   const now = Date.now();
   const project_id = `p_REEL_DRAFT_${now}`;
   const scenes = ordered.map((c, i) => ({
@@ -1416,10 +1509,170 @@ async function sendToSomaticaEdit() {
   if (error) { toast(error.message, 'error'); return; }
 
   toast(`Projet ${project_id} créé — ${ordered.length} clips`, 'success');
-  window.open(`https://edit.somatica-feed.com/?project=${project_id}`, '_blank');
+  window.open(`https://edit.somatica-feed.com/?p=${project_id}`, '_blank');
   state.selection.clear();
   updateSelectionBar();
   renderGallery();
+}
+
+// Mode PICKER : on injecte les clips dans un projet SomaticaEdit existant.
+// Format : 1 seul layer type="video-sequence" dans scenes[0].layers
+// avec props.clips[] = [{ video_id, url, order_index, start_trim, end_trim, audio_enabled }]
+// Miroir : INSERT dans reel_library_sources pour la traçabilité bidirectionnelle.
+async function sendToSomaticaEditPicker(ordered) {
+  const btn = sendToEditBtn;
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Envoi vers Edit...';
+
+  try {
+    // 1. Charger le projet existant
+    const { data: proj, error: loadErr } = await sb
+      .from('edit_projects')
+      .select('data, name, format')
+      .eq('user_id', JEROME_USER_ID)
+      .eq('project_id', RETURN_PROJECT_ID)
+      .single();
+    if (loadErr || !proj) {
+      throw new Error(`Projet ${RETURN_PROJECT_ID} introuvable : ${loadErr?.message || 'not found'}`);
+    }
+
+    const projectData = proj.data || {};
+    const scenes = Array.isArray(projectData.scenes) ? [...projectData.scenes] : [];
+    if (!scenes.length) {
+      // Projet vide : on ajoute une scène 0 minimaliste
+      scenes.push({
+        id: 'scene_1',
+        name: 'Séquence Reel',
+        format: 'reel',
+        background: { type: 'color', color: '#0d1e25' },
+        duration: 0,
+        layers: [],
+      });
+    }
+
+    // 2. Construire le layer video-sequence
+    const clipsForLayer = ordered.map((c, i) => ({
+      video_id: c.id,
+      url: c.r2_url,
+      order_index: i,
+      start_trim: 0,
+      end_trim: c.duration_seconds != null ? Number(c.duration_seconds) : null,
+      audio_enabled: true,
+      duration_seconds: Number(c.duration_seconds) || null,
+      thumbnail_url: c.thumbnail_url || null,
+      ambiance: c.ambiance || null,
+    }));
+    const totalDuration = clipsForLayer.reduce(
+      (s, c) => s + (c.end_trim != null && c.start_trim != null ? c.end_trim - c.start_trim : 0),
+      0
+    );
+
+    const videoSequenceLayer = {
+      id: 'l_vseq',
+      type: 'video-sequence',
+      name: 'Séquence vidéo',
+      visible: true,
+      locked: false,
+      x: 540, y: 960,
+      timeline: { start: 0, end: totalDuration },
+      props: {
+        clips: clipsForLayer,
+        width: 1080,
+        height: 1920,
+      },
+    };
+
+    // 3. Remplacer/ajouter le layer video-sequence dans scenes[0].layers
+    const scene0 = { ...scenes[0] };
+    const existingLayers = Array.isArray(scene0.layers) ? [...scene0.layers] : [];
+    const idx = existingLayers.findIndex(l => l?.type === 'video-sequence');
+    if (idx >= 0) existingLayers[idx] = videoSequenceLayer;
+    else existingLayers.unshift(videoSequenceLayer);
+    scene0.layers = existingLayers;
+    // Durée de la scène = max entre durée actuelle et durée totale clips
+    const currentDur = Number(scene0.duration) || 0;
+    if (totalDuration > currentDur) scene0.duration = totalDuration;
+    scenes[0] = scene0;
+
+    const newData = { ...projectData, scenes, source_type: 'library' };
+
+    // 4. Upsert du projet
+    const { error: upErr } = await sb.from('edit_projects').upsert({
+      user_id: JEROME_USER_ID,
+      project_id: RETURN_PROJECT_ID,
+      name: proj.name || `Reel ${RETURN_PROJECT_ID}`,
+      format: proj.format || 'reel',
+      data: newData,
+      source: 'library',
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,project_id' });
+    if (upErr) throw new Error(`Upsert edit_projects: ${upErr.message}`);
+
+    // 5. Miroir dans reel_library_sources : on cherche le feed_image_id lié au projet
+    const { data: fiRows, error: fiErr } = await sb
+      .from('feed_images')
+      .select('id')
+      .eq('edit_project_id', RETURN_PROJECT_ID)
+      .limit(1);
+    if (fiErr) console.warn('feed_images lookup', fiErr);
+    const feedImageId = fiRows && fiRows[0]?.id;
+
+    if (feedImageId) {
+      // Purge les sources existantes pour ce feed_image_id puis réinsère
+      const { error: delErr } = await sb
+        .from('reel_library_sources')
+        .delete()
+        .eq('feed_image_id', feedImageId);
+      if (delErr) console.warn('delete reel_library_sources', delErr);
+
+      const rows = clipsForLayer.map((c, i) => ({
+        feed_image_id: feedImageId,
+        video_library_id: c.video_id,
+        order_index: i,
+        start_trim: c.start_trim,
+        end_trim: c.end_trim,
+      }));
+      if (rows.length) {
+        const { error: insErr } = await sb.from('reel_library_sources').insert(rows);
+        if (insErr) console.warn('insert reel_library_sources', insErr);
+      }
+
+      // On marque feed_images.source_type = 'library' pour cohérence spec v4
+      const { error: ftErr } = await sb
+        .from('feed_images')
+        .update({ source_type: 'library', updated_at: new Date().toISOString() })
+        .eq('id', feedImageId);
+      if (ftErr) console.warn('feed_images.source_type update', ftErr);
+    } else {
+      console.warn('Aucun feed_image lié à', RETURN_PROJECT_ID, '- traçabilité BD non posée');
+    }
+
+    // 6. Retour SomaticaEdit
+    toast(`${ordered.length} clips injectés — retour SomaticaEdit`, 'success');
+    state.selection.clear();
+    updateSelectionBar();
+
+    const editUrl = `https://edit.somatica-feed.com/?p=${encodeURIComponent(RETURN_PROJECT_ID)}`;
+    // Si la Library a été ouverte depuis Edit (window.opener), on revient dans l'onglet d'origine
+    if (window.opener && !window.opener.closed) {
+      try {
+        window.opener.location.href = editUrl;
+        window.opener.focus();
+        window.close();
+        return;
+      } catch (e) {
+        // Cross-origin bloque, fallback redirect direct
+      }
+    }
+    window.location.replace(editUrl);
+  } catch (e) {
+    console.error('sendToSomaticaEditPicker', e);
+    toast(e.message || 'Erreur envoi', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
 }
 
 // ---------- ZOOM / DENSITÉ GRILLE ----------
@@ -1483,5 +1736,53 @@ gallery.addEventListener('touchend', (e) => {
   lastTap = now;
 }, { passive: true });
 
+// ---------- PICKER MODE : UI (bannière + bouton) ----------
+function initPickerModeUI() {
+  if (!PICKER_MODE || !RETURN_PROJECT_ID) return;
+  // Afficher la bannière
+  const banner = document.getElementById('picker-banner');
+  if (banner) {
+    banner.style.display = 'flex';
+    const idEl = document.getElementById('picker-return-id');
+    if (idEl) idEl.textContent = RETURN_PROJECT_ID;
+  }
+  // Renommer le bouton "Envoyer"
+  if (sendToEditBtn) sendToEditBtn.textContent = 'Valider la sélection →';
+  // Par défaut en picker mode : on pré-filtre "Non utilisé" pour éviter les doublons
+  if (!state.filters.usage) {
+    state.filters.usage = 'unused';
+    const usageFilter = document.getElementById('usage-filter');
+    if (usageFilter) usageFilter.value = 'unused';
+  }
+  // Bouton Annuler : retour SomaticaEdit sans modification
+  const cancelBtn = document.getElementById('picker-cancel');
+  if (cancelBtn && !cancelBtn.dataset.wired) {
+    cancelBtn.dataset.wired = '1';
+    cancelBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.focus();
+          window.close();
+          return;
+        }
+      } catch (err) { /* cross-origin, fallback */ }
+      const editUrl = `https://edit.somatica-feed.com/?p=${encodeURIComponent(RETURN_PROJECT_ID)}`;
+      window.location.replace(editUrl);
+    });
+  }
+}
+
+// ---------- USAGE FILTER (wire) ----------
+const usageFilter = document.getElementById('usage-filter');
+if (usageFilter) {
+  usageFilter.addEventListener('change', e => {
+    state.filters.usage = e.target.value;
+    resetAndReload();
+  });
+}
+
 // ---------- INIT ----------
-checkSession();
+checkSession().then(() => initPickerModeUI());
+// Au cas où la session existe déjà (onAuthStateChange), on s'assure que la bannière s'affiche
+setTimeout(() => initPickerModeUI(), 300);
