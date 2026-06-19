@@ -225,6 +225,10 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
 .gallery[data-dense="2"] .card .duration { font-size: 9px; padding: 1px 5px; }
 .gallery[data-dense="2"] .card .select-checkbox { width: 20px; height: 20px; }
 
+/* Empêche la sélection de texte parasite au shift+clic dans la grille (commentaire reste éditable) */
+.gallery { -webkit-user-select: none; user-select: none; }
+.gallery input, .gallery textarea { -webkit-user-select: text; user-select: text; }
+
 .card {
   position: relative; background: #0f2f3a; border-radius: 10px; overflow: hidden;
   cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
@@ -366,6 +370,7 @@ body.tri-on .card.tri-refuse { border-color: #d98a8a; opacity: 0.5; }
 .tri-tags input { width: 14px; height: 14px; accent-color: #ebd3a0; }
 .tri-tags .tg-nathalie_sol { color: #e8b0b0; }
 .tri-tags .tg-deja_monte { color: #a9d5e8; }
+.tri-tags .tg-texte_incruste { color: #d9b8e8; }
 .tri-tags .tg-son_origine { color: #e8d59a; }
 /* Le rond ▶ reste visible : c'est le bouton "ouvrir le lecteur" (surtout en mode tri) */
 /* Réglette d'aperçu en overlay bas de vignette, visible seulement en Mode tri */
@@ -1841,7 +1846,7 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
   </div>
   <div class="batch-tri" id="batch-tri"></div>
   <div class="actions">
-    <button class="btn" id="clear-selection">Vider</button>
+    <button class="btn" id="clear-selection">Tout désélectionner</button>
     <button class="btn primary" id="send-to-edit">Envoyer vers SomaticaEdit</button>
   </div>
 </div>
