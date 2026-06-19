@@ -67,7 +67,8 @@ const DEFAULT_FILTERS = {
   speech: '',    // '' | 'with' | 'without'
   usableReel: false,
   usage: '',     // '' | 'unused' | 'used'
-  triHide: false, // mode tri : masquer les clips déjà triés (statut != a_trier)
+  triHide: false, // mode tri : masquer les clips déjà triés
+  triRefused: false, // mode tri : afficher uniquement les refusés
   emotions: [],  // multi
   tags: [],      // multi
   personsNames: [],  // multi (noms Apple)
@@ -449,9 +450,14 @@ function buildQuery() {
 
   if (f.usableReel) q = q.eq('usable_for_reel', true);
 
-  // "Masquer les déjà triées" : trié = Refusé, OU OK avec note écrite.
-  // On garde donc visibles : pas encore décidés, ou OK sans note.
-  if (f.triHide) q = q.or('tri_status.eq.a_trier,and(tri_status.eq.ok,tri_note.is.null)');
+  // "Afficher les refusés" prime : on ne montre que les refusés.
+  // Sinon "Masquer les déjà triées" : trié = Refusé, OU OK avec au moins 1 étoile ;
+  // on garde visibles les pas-décidés et les OK sans étoile.
+  if (f.triRefused) {
+    q = q.eq('tri_status', 'refuse');
+  } else if (f.triHide) {
+    q = q.or('tri_status.eq.a_trier,and(tri_status.eq.ok,tri_rating.is.null),and(tri_status.eq.ok,tri_rating.eq.0)');
+  }
 
   if (f.persons === '0') q = q.eq('persons_count', 0);
   else if (f.persons === '1') q = q.eq('persons_count', 1);
@@ -926,7 +932,7 @@ function paintStars(container, n) {
 // "Trié" : Refusé tout court, OU OK avec une note écrite.
 function isTriaged(c) {
   if (c.tri_status === 'refuse') return true;
-  if (c.tri_status === 'ok') return !!(c.tri_note && String(c.tri_note).trim());
+  if (c.tri_status === 'ok') return (Number(c.tri_rating) || 0) > 0; // OK trié = au moins 1 étoile
   return false;
 }
 function removeCardFromGrid(c, card) {
@@ -943,7 +949,7 @@ function removeCardFromGrid(c, card) {
 }
 // Masque la vignette au fur et à mesure si le filtre "Masquer les déjà triées" est actif.
 function maybeHideTriaged(c, card) {
-  if (state.filters.triHide && isTriaged(c) && card.isConnected) removeCardFromGrid(c, card);
+  if (state.filters.triHide && !state.filters.triRefused && isTriaged(c) && card.isConnected) removeCardFromGrid(c, card);
 }
 
 function makeTriPanel(c, card) {
@@ -965,7 +971,6 @@ function makeTriPanel(c, card) {
     noB.classList.toggle('on', c.tri_status === 'refuse');
   };
   okB.addEventListener('click', () => {
-    saveNote(); // enregistre la note tapée avant d'évaluer le masquage
     updateTri(c, card, { tri_status: c.tri_status === 'ok' ? 'a_trier' : 'ok' });
     reflectStatus();
     updateTriProgressDebounced();
@@ -998,6 +1003,7 @@ function makeTriPanel(c, card) {
       updateTri(c, card, { tri_rating: nv });
       paintStars(stars, nv);
       showVal(nv);
+      maybeHideTriaged(c, card); // une étoile sur un OK = trié, donc masquage au fil
     });
     stars.appendChild(s);
   }
@@ -1011,12 +1017,11 @@ function makeTriPanel(c, card) {
   const note = document.createElement('input');
   note.className = 'tri-note';
   note.type = 'text';
-  note.placeholder = 'note…';
+  note.placeholder = 'commentaire…';
   note.value = c.tri_note || '';
   const saveNote = () => {
     const v = note.value.trim();
     if ((c.tri_note || '') !== v) updateTri(c, card, { tri_note: v || null });
-    maybeHideTriaged(c, card);
   };
   note.addEventListener('change', saveNote);
   note.addEventListener('blur', saveNote);
@@ -1121,6 +1126,8 @@ function syncFiltersToUI() {
   if (uf) uf.value = f.usage || '';
   const th = document.getElementById('tri-hide-checkbox');
   if (th) th.checked = !!f.triHide;
+  const tr = document.getElementById('tri-refused-checkbox');
+  if (tr) tr.checked = !!f.triRefused;
 }
 
 searchInput.addEventListener('input', debounce(e => {
@@ -1194,13 +1201,19 @@ resetFiltersBtn.addEventListener('click', () => {
 // ---------- MODE TRI WIRING ----------
 const triModeBtn = $('tri-mode-btn');
 const triHideCheckbox = $('tri-hide-checkbox');
+const triRefusedCheckbox = $('tri-refused-checkbox');
 triModeBtn && triModeBtn.addEventListener('click', () => setTriMode(!state.triMode));
 triHideCheckbox && triHideCheckbox.addEventListener('change', () => {
   state.filters.triHide = triHideCheckbox.checked;
   resetAndReload();
 });
-// Restaurer l'état du mode tri + la case "masquer les déjà triées"
+triRefusedCheckbox && triRefusedCheckbox.addEventListener('change', () => {
+  state.filters.triRefused = triRefusedCheckbox.checked;
+  resetAndReload();
+});
+// Restaurer l'état du mode tri + les cases
 if (triHideCheckbox) triHideCheckbox.checked = !!state.filters.triHide;
+if (triRefusedCheckbox) triRefusedCheckbox.checked = !!state.filters.triRefused;
 setTriMode((() => { try { return localStorage.getItem('library_tri_mode') === '1'; } catch (e) { return false; } })());
 
 // ---------- DRAWER ----------
