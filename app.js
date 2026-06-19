@@ -39,8 +39,15 @@ const LIGHT_COLS = [
   'quality_score', 'persons_count', 'persons_detected',
   'music_present', 'has_speech', 'emotional_intensity', 'emotional_states',
   'usable_for_reel', 'location_name',
-  'tri_status', 'tri_rating', 'tri_note', 'tri_tags', 'tri_participante',
+  'tri_status', 'tri_rating', 'tri_note', 'tri_tags', 'tri_participante', 'codec',
 ].join(',');
+
+// Le navigateur sait-il décoder le HEVC/H.265 ? (Safari oui, Chrome souvent non)
+const HEVC_SUPPORTED = (() => {
+  try { const v = document.createElement('video'); return !!(v.canPlayType('video/mp4; codecs="hvc1"') || v.canPlayType('video/mp4; codecs="hev1"')); }
+  catch (e) { return false; }
+})();
+function clipPreviewable(c) { return !(c && c.codec === 'hevc' && !HEVC_SUPPORTED); }
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
@@ -764,11 +771,13 @@ function makeCard(c) {
       return this.video;
     },
     play() {
+      if (!clipPreviewable(c)) return; // HEVC non décodable : on garde la vignette fixe
       const v = this.ensure();
       v.muted = false; v.volume = 0.85;
       v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
     },
     seek(ratio) {
+      if (!clipPreviewable(c)) return;
       // Pas de pause : si ça joue, la lecture continue. On n'empile pas les seeks.
       const v = this.ensure();
       const go = () => {
@@ -824,6 +833,14 @@ function makeCard(c) {
   playIcon.title = 'Ouvrir le lecteur';
   playIcon.addEventListener('click', (e) => { e.stopPropagation(); openModal(c.id); });
   thumb.appendChild(playIcon);
+
+  if (!clipPreviewable(c)) {
+    const cdb = document.createElement('div');
+    cdb.className = 'codec-badge';
+    cdb.textContent = 'HEVC';
+    cdb.title = 'Format HEVC non lisible dans ce navigateur, à ré-encoder en H.264';
+    thumb.appendChild(cdb);
+  }
 
   // badge analyse
   const as = c.analysis_status || 'pending';
@@ -1653,13 +1670,34 @@ async function applyBatchTag(tag) {
 }
 
 // ---------- MODAL ----------
+function setModalHevcNotice(c) {
+  const container = modalVideo.parentElement;
+  if (!container) return;
+  let notice = container.querySelector('.modal-hevc-notice');
+  if (!c) { if (notice) notice.remove(); return; }
+  if (!notice) { notice = document.createElement('div'); notice.className = 'modal-hevc-notice'; container.appendChild(notice); }
+  const img = c.thumbnail_url ? `<img src="${escapeAttr(c.thumbnail_url)}" alt="">` : '';
+  notice.innerHTML = `${img}<div class="mhn-msg">Vidéo en HEVC, non lisible dans ce navigateur.<br>Elle sera visible après ré-encodage en H.264.</div>`;
+}
+
 function openModal(id) {
   const c = state.clips.find(x => x.id === id);
   if (!c) return;
+  if (activePreview) activePreview.stop(); // couper les aperçus de la galerie derrière la modale
   state.currentModalId = id;
   modalTitle.textContent = c.ambiance ? c.ambiance : (c.file_name || 'Clip');
-  modalVideo.src = c.r2_url;
-  modalVideo.currentTime = 0;
+  if (clipPreviewable(c)) {
+    modalVideo.style.display = '';
+    modalVideo.src = c.r2_url;
+    modalVideo.currentTime = 0;
+    setModalHevcNotice(null);
+  } else {
+    modalVideo.pause();
+    modalVideo.removeAttribute('src');
+    try { modalVideo.load(); } catch (e) {}
+    modalVideo.style.display = 'none';
+    setModalHevcNotice(c);
+  }
 
   modalBody.innerHTML = '';
   const rows = [
@@ -1730,6 +1768,8 @@ function closeModal() {
   modalBg.classList.remove('active');
   modalVideo.pause();
   modalVideo.src = '';
+  modalVideo.style.display = '';
+  setModalHevcNotice(null);
   state.currentModalId = null;
 }
 
