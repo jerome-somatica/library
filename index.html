@@ -245,6 +245,8 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
   width: 100%; height: 100%; object-fit: cover;
 }
 .card .thumb img { display: block; background: #000; }
+/* La vidéo d'aperçu ne capte pas les clics : le tap sur l'image ouvre toujours la lecture */
+.card .thumb video { pointer-events: none; }
 .card .thumb .play-icon {
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
@@ -338,7 +340,8 @@ body.tri-on .card .tri-panel {
 }
 body.tri-on .card.tri-ok { border-color: #7fc77f; box-shadow: 0 0 0 2px rgba(127,199,127,0.4); }
 body.tri-on .card.tri-refuse { border-color: #d98a8a; opacity: 0.5; }
-.tri-panel .tri-row { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+.tri-panel .tri-row { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; flex-wrap: wrap; }
+.tri-panel .tri-row .tri-note { flex: 1; width: auto; min-width: 90px; margin-bottom: 0; }
 .tri-status-btn {
   flex: 1; padding: 6px 0; border-radius: 6px;
   border: 1px solid rgba(235,211,160,0.3); background: transparent;
@@ -346,7 +349,7 @@ body.tri-on .card.tri-refuse { border-color: #d98a8a; opacity: 0.5; }
 }
 .tri-status-btn.ok.on { background: #7fc77f; color: #093009; border-color: #7fc77f; }
 .tri-status-btn.refuse.on { background: #d98a8a; color: #3a0a0a; border-color: #d98a8a; }
-.tri-stars { display: flex; flex-wrap: wrap; gap: 1px; cursor: pointer; }
+.tri-stars { display: flex; flex-wrap: nowrap; gap: 1px; cursor: pointer; flex-shrink: 0; }
 .tri-stars .st { font-size: 16px; line-height: 1; color: #ebd3a0; opacity: 0.35; padding: 1px 2px; }
 .tri-stars .st.on { opacity: 1; }
 .tri-rating-val { color: #ebd3a0; font-size: 12px; font-weight: 600; margin-left: 6px; align-self: center; font-variant-numeric: tabular-nums; }
@@ -465,6 +468,14 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 .selection-bar .count { font-weight: 600; font-size: 16px; }
 .selection-bar .meta { opacity: 0.7; font-size: 13px; }
 .selection-bar .actions { margin-left: auto; display: flex; gap: 10px; }
+/* Actions groupées du mode tri (appliquer statut/tags à toute la sélection) */
+.batch-tri { display: none; gap: 5px; flex-wrap: wrap; align-items: center; }
+body.tri-on .selection-bar.active .batch-tri { display: flex; }
+.batch-tri .batch-sep { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(235,211,160,0.5); margin: 0 2px; }
+.batch-btn { padding: 4px 9px; border-radius: 6px; border: 1px solid rgba(235,211,160,0.3); background: transparent; color: #ebd3a0; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.batch-btn:hover { background: rgba(235,211,160,0.1); }
+.batch-btn.ok { border-color: #7fc77f; color: #b6e3b6; }
+.batch-btn.refuse { border-color: #d98a8a; color: #ecb6b6; }
 
 /* Loading */
 .loading {
@@ -1828,6 +1839,7 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
     <div class="count"><span id="sel-count">0</span> clips sélectionnés</div>
     <div class="meta" id="sel-meta">0 sec au total</div>
   </div>
+  <div class="batch-tri" id="batch-tri"></div>
   <div class="actions">
     <button class="btn" id="clear-selection">Vider</button>
     <button class="btn primary" id="send-to-edit">Envoyer vers SomaticaEdit</button>

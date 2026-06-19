@@ -843,7 +843,7 @@ function makeCard(c) {
   cb.textContent = state.selection.has(c.id) ? '✓' : '';
   cb.addEventListener('click', e => {
     e.stopPropagation();
-    toggleSelection(c.id);
+    handleSelectClick(c.id, e.shiftKey);
   });
   thumb.appendChild(cb);
 
@@ -885,6 +885,9 @@ const TRI_TAGS = [
   ['individuel', 'Individuel'],
   ['nathalie_facilite', 'Nath. facilite'],
   ['nathalie_sol', 'Nath. au sol'],
+];
+// Cas montage / son, sur leur propre ligne
+const TRI_CASES = [
   ['deja_monte', 'Déjà monté'],
   ['son_origine', "Son d'origine ++"],
 ];
@@ -1012,9 +1015,8 @@ function makeTriPanel(c, card) {
   showVal(c.tri_rating || 0);
   rowR.appendChild(stars);
   rowR.appendChild(ratingVal);
-  p.appendChild(rowR);
 
-  // Note libre
+  // Commentaire (même ligne que les étoiles)
   const note = document.createElement('input');
   note.className = 'tri-note';
   note.type = 'text';
@@ -1026,7 +1028,8 @@ function makeTriPanel(c, card) {
   };
   note.addEventListener('change', saveNote);
   note.addEventListener('blur', saveNote);
-  p.appendChild(note);
+  rowR.appendChild(note);
+  p.appendChild(rowR);
 
   // Tags contexte + cas particuliers
   const ctxTitle = document.createElement('div');
@@ -1047,6 +1050,22 @@ function makeTriPanel(c, card) {
     tagsWrap.appendChild(lab);
   }
   p.appendChild(tagsWrap);
+
+  // Cas montage / son (ligne dédiée, sous les choix de contexte)
+  const casesWrap = document.createElement('div');
+  casesWrap.className = 'tri-tags';
+  for (const [val, label] of TRI_CASES) {
+    const lab = document.createElement('label');
+    lab.className = 'tg-' + val;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = triHas(c, val);
+    cb.addEventListener('change', () => toggleTriTag(c, card, val, cb.checked));
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(' ' + label));
+    casesWrap.appendChild(lab);
+  }
+  p.appendChild(casesWrap);
 
   // Pratique (type de transe filmée)
   const pracTitle = document.createElement('div');
@@ -1215,6 +1234,7 @@ triRefusedCheckbox && triRefusedCheckbox.addEventListener('change', () => {
 // Restaurer l'état du mode tri + les cases
 if (triHideCheckbox) triHideCheckbox.checked = !!state.filters.triHide;
 if (triRefusedCheckbox) triRefusedCheckbox.checked = !!state.filters.triRefused;
+buildBatchTriBar();
 setTriMode((() => { try { return localStorage.getItem('library_tri_mode') === '1'; } catch (e) { return false; } })());
 
 // ---------- DRAWER ----------
@@ -1393,15 +1413,35 @@ function updateFiltersBadge() {
 setTimeout(() => { renderActiveChips(); updateFiltersBadge(); }, 100);
 
 // ---------- SELECTION ----------
+let lastSelIndex = null;
+function paintCardSelection(id) {
+  const card = gallery.querySelector(`.card[data-id="${id}"]`);
+  if (!card) return;
+  const sel = state.selection.has(id);
+  card.classList.toggle('selected', sel);
+  const cb = card.querySelector('.select-checkbox');
+  if (cb) cb.textContent = sel ? '✓' : '';
+}
 function toggleSelection(id) {
   if (state.selection.has(id)) state.selection.delete(id);
   else state.selection.add(id);
   updateSelectionBar();
-  const card = gallery.querySelector(`.card[data-id="${id}"]`);
-  if (card) {
-    card.classList.toggle('selected', state.selection.has(id));
-    const cb = card.querySelector('.select-checkbox');
-    if (cb) cb.textContent = state.selection.has(id) ? '✓' : '';
+  paintCardSelection(id);
+}
+// Clic sur une case : sans shift = coche/décoche ; avec shift = sélectionne toute
+// la plage depuis la dernière case cochée (sélection en série).
+function handleSelectClick(id, shift) {
+  const idx = state.clips.findIndex(x => x.id === id);
+  if (shift && lastSelIndex != null && idx >= 0) {
+    const a = Math.min(lastSelIndex, idx), b = Math.max(lastSelIndex, idx);
+    for (let i = a; i <= b; i++) {
+      const cid = state.clips[i] && state.clips[i].id;
+      if (cid) { state.selection.add(cid); paintCardSelection(cid); }
+    }
+    updateSelectionBar();
+  } else {
+    toggleSelection(id);
+    lastSelIndex = idx;
   }
 }
 
@@ -1425,6 +1465,69 @@ clearSelectionBtn.addEventListener('click', () => {
 });
 
 sendToEditBtn.addEventListener('click', sendToSomaticaEdit);
+
+// ---------- ACTIONS GROUPÉES (mode tri) ----------
+function buildBatchTriBar() {
+  const host = document.getElementById('batch-tri');
+  if (!host) return;
+  host.innerHTML = '';
+  const ok = document.createElement('button');
+  ok.className = 'batch-btn ok'; ok.textContent = 'OK';
+  ok.addEventListener('click', () => applyBatchStatus('ok'));
+  const no = document.createElement('button');
+  no.className = 'batch-btn refuse'; no.textContent = 'Refusé';
+  no.addEventListener('click', () => applyBatchStatus('refuse'));
+  host.appendChild(ok);
+  host.appendChild(no);
+  const sep = document.createElement('span');
+  sep.className = 'batch-sep'; sep.textContent = 'tags';
+  host.appendChild(sep);
+  for (const [val, label] of [...TRI_TAGS, ...TRI_CASES, ...TRI_PRACTICES]) {
+    const b = document.createElement('button');
+    b.className = 'batch-btn tag'; b.textContent = label;
+    b.addEventListener('click', () => applyBatchTag(val));
+    host.appendChild(b);
+  }
+}
+
+async function applyBatchStatus(status) {
+  const ids = [...state.selection];
+  if (!ids.length) { toast('Aucune sélection'); return; }
+  for (const id of ids) { const c = state.clips.find(x => x.id === id); if (c) { c.tri_status = status; recomputeUsable(c); } }
+  const { error } = await sb.from('video_library').update({ tri_status: status }).in('id', ids);
+  if (error) { console.error('applyBatchStatus', error); toast('Échec de la mise à jour', 'error'); return; }
+  toast(`${ids.length} clip(s) → ${status === 'ok' ? 'OK' : 'Refusé'}`);
+  updateTriProgressDebounced();
+  if (state.filters.triHide && !state.filters.triRefused) {
+    const remove = new Set(ids.filter(id => { const c = state.clips.find(x => x.id === id); return c && isTriaged(c); }));
+    if (remove.size) {
+      state.clips = state.clips.filter(c => !remove.has(c.id));
+      if (state.filteredCount != null) state.filteredCount = Math.max(0, state.filteredCount - remove.size);
+    }
+  }
+  state.selection.clear();
+  lastSelIndex = null;
+  updateSelectionBar();
+  renderGallery();
+}
+
+async function applyBatchTag(tag) {
+  const ids = [...state.selection];
+  if (!ids.length) { toast('Aucune sélection'); return; }
+  const clips = ids.map(id => state.clips.find(x => x.id === id)).filter(Boolean);
+  const allHave = clips.length > 0 && clips.every(c => triHas(c, tag));
+  const add = !allHave; // si tous l'ont déjà, on retire ; sinon on ajoute
+  await Promise.all(clips.map(c => {
+    const tags = Array.isArray(c.tri_tags) ? [...c.tri_tags] : [];
+    const i = tags.indexOf(tag);
+    if (add && i < 0) tags.push(tag);
+    if (!add && i >= 0) tags.splice(i, 1);
+    c.tri_tags = tags; recomputeUsable(c);
+    return sb.from('video_library').update({ tri_tags: tags }).eq('id', c.id).then(({ error }) => { if (error) console.error('applyBatchTag', error); });
+  }));
+  toast(`${clips.length} clip(s) : ${add ? 'tag ajouté' : 'tag retiré'}`);
+  renderGallery();
+}
 
 // ---------- MODAL ----------
 function openModal(id) {
