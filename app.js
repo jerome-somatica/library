@@ -890,10 +890,12 @@ const TRI_TAGS = [
   ['individuel', 'Individuel'],
   ['nathalie_facilite', 'Nath. facilite'],
   ['nathalie_sol', 'Nath. au sol'],
+  ['duo_jerome_nathalie', 'Duo Jérôme & Nathalie'],
 ];
 // Cas montage / son, sur leur propre ligne
 const TRI_CASES = [
   ['deja_monte', 'Déjà monté'],
+  ['texte_incruste', 'Texte incrusté'],
   ['son_origine', "Son d'origine ++"],
 ];
 
@@ -1064,7 +1066,19 @@ function makeTriPanel(c, card) {
   note.value = c.tri_note || '';
   const saveNote = () => {
     const v = note.value.trim();
-    if ((c.tri_note || '') !== v) updateTri(c, card, { tri_note: v || null });
+    const ids = triTargets(c); // toute la sélection si multi, sinon juste cette carte
+    let changed = 0;
+    for (const id of ids) {
+      const cc = state.clips.find(x => x.id === id);
+      if (!cc) continue;
+      if ((cc.tri_note || '') !== v) { updateTri(cc, cardEl(id), { tri_note: v || null }); changed++; }
+      if (id !== c.id) { // recopier le texte dans le champ des autres cartes
+        const el = cardEl(id);
+        const inp = el && el.querySelector('.tri-note');
+        if (inp) inp.value = v;
+      }
+    }
+    if (ids.length > 1 && changed) toast(`Commentaire copié sur ${ids.length} clips`);
   };
   note.addEventListener('change', saveNote);
   note.addEventListener('blur', saveNote);
