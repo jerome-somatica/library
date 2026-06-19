@@ -919,19 +919,28 @@ const TRI_PRACTICES = [
 ];
 
 // Rendu d'une ligne de cases à cocher (tags) pour une liste donnée
-function renderTriTagWrap(c, card, list) {
+function groupLabel(txt) {
+  const d = document.createElement('div');
+  d.className = 'tri-group-label';
+  d.textContent = txt;
+  return d;
+}
+// Rendu d'un groupe de tags en boutons-pastilles (toggle)
+function renderTriTagWrap(c, card, list, variant) {
   const wrap = document.createElement('div');
-  wrap.className = 'tri-tags';
+  wrap.className = 'tri-chips';
   for (const [val, label] of list) {
-    const lab = document.createElement('label');
-    lab.className = 'tg-' + val;
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = triHas(c, val);
-    cb.addEventListener('change', () => toggleTriTag(c, card, val, cb.checked));
-    lab.appendChild(cb);
-    lab.appendChild(document.createTextNode(' ' + label));
-    wrap.appendChild(lab);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tri-chip' + (variant ? ' ' + variant : '');
+    if (triHas(c, val)) b.classList.add('on');
+    b.textContent = label;
+    b.addEventListener('click', () => {
+      const newOn = !b.classList.contains('on');
+      toggleTriTag(c, card, val, newOn);
+      b.classList.toggle('on', newOn);
+    });
+    wrap.appendChild(b);
   }
   return wrap;
 }
@@ -1049,7 +1058,7 @@ function makeTriPanel(c, card) {
   p.className = 'tri-panel';
   p.addEventListener('click', e => e.stopPropagation());
 
-  // Statut : OK / Refusé
+  // Boutons OK / Refusé (créés ici, placés en bas du panneau)
   const rowS = document.createElement('div');
   rowS.className = 'tri-row';
   const okB = document.createElement('button');
@@ -1062,19 +1071,14 @@ function makeTriPanel(c, card) {
     okB.classList.toggle('on', c.tri_status === 'ok');
     noB.classList.toggle('on', c.tri_status === 'refuse');
   };
-  okB.addEventListener('click', () => {
-    setTriStatus(c, card, c.tri_status === 'ok' ? 'a_trier' : 'ok');
-    reflectStatus();
-  });
-  noB.addEventListener('click', () => {
-    setTriStatus(c, card, c.tri_status === 'refuse' ? 'a_trier' : 'refuse');
-    reflectStatus();
-  });
+  okB.addEventListener('click', () => { setTriStatus(c, card, c.tri_status === 'ok' ? 'a_trier' : 'ok'); reflectStatus(); });
+  noB.addEventListener('click', () => { setTriStatus(c, card, c.tri_status === 'refuse' ? 'a_trier' : 'refuse'); reflectStatus(); });
   reflectStatus();
   rowS.appendChild(okB);
   rowS.appendChild(noB);
 
-  // Note : 0 à 10 étoiles (aligné sur le score Gemini /10)
+  // Note : 10 étoiles + score /10
+  p.appendChild(groupLabel('Note'));
   const rowR = document.createElement('div');
   rowR.className = 'tri-row';
   const stars = document.createElement('div');
@@ -1091,7 +1095,7 @@ function makeTriPanel(c, card) {
       updateTri(c, card, { tri_rating: nv });
       paintStars(stars, nv);
       showVal(nv);
-      maybeHideTriaged(c, card); // une étoile sur un OK = trié, donc masquage au fil
+      maybeHideTriaged(c, card);
     });
     stars.appendChild(s);
   }
@@ -1099,51 +1103,19 @@ function makeTriPanel(c, card) {
   showVal(c.tri_rating || 0);
   rowR.appendChild(stars);
   rowR.appendChild(ratingVal);
-
-  // Commentaire (même ligne que les étoiles)
-  const note = document.createElement('input');
-  note.className = 'tri-note';
-  note.type = 'text';
-  note.placeholder = 'commentaire…';
-  note.value = c.tri_note || '';
-  const saveNote = () => {
-    const v = note.value.trim();
-    const ids = triTargets(c); // toute la sélection si multi, sinon juste cette carte
-    let changed = 0;
-    for (const id of ids) {
-      const cc = state.clips.find(x => x.id === id);
-      if (!cc) continue;
-      if ((cc.tri_note || '') !== v) { updateTri(cc, cardEl(id), { tri_note: v || null }); changed++; }
-      if (id !== c.id) { // recopier le texte dans le champ des autres cartes
-        const el = cardEl(id);
-        const inp = el && el.querySelector('.tri-note');
-        if (inp) inp.value = v;
-      }
-    }
-    if (ids.length > 1 && changed) toast(`Commentaire copié sur ${ids.length} clips`);
-  };
-  note.addEventListener('change', saveNote);
-  note.addEventListener('blur', saveNote);
-  rowR.appendChild(note);
   p.appendChild(rowR);
 
-  // Contexte (ligne 1 : Formation / Séance / Individuel)
-  const ctxTitle = document.createElement('div');
-  ctxTitle.className = 'tri-group-label';
-  ctxTitle.textContent = 'Contexte';
-  p.appendChild(ctxTitle);
-  p.appendChild(renderTriTagWrap(c, card, TRI_CTX1));
-
-  // Participante (nom libre + autocomplétion sur les noms déjà saisis)
+  // Participante (sous la note) + autocomplétion
+  p.appendChild(groupLabel('Participante'));
   const part = document.createElement('input');
-  part.className = 'tri-note tri-participante';
+  part.className = 'tri-field tri-participante';
   part.type = 'text';
-  part.placeholder = 'participante…';
+  part.placeholder = 'nom de la participante…';
   part.setAttribute('list', 'participantes-list');
   part.value = c.tri_participante || '';
   const savePart = () => {
     const v = part.value.trim();
-    const ids = triTargets(c); // duplique sur la sélection si multi
+    const ids = triTargets(c);
     for (const id of ids) {
       const cc = state.clips.find(x => x.id === id);
       if (!cc) continue;
@@ -1157,24 +1129,43 @@ function makeTriPanel(c, card) {
   part.addEventListener('blur', savePart);
   p.appendChild(part);
 
-  // Contexte (ligne 2 : Nath. facilite / Nath. au sol / Duo)
-  p.appendChild(renderTriTagWrap(c, card, TRI_CTX2));
+  // Contexte (boutons)
+  p.appendChild(groupLabel('Contexte'));
+  p.appendChild(renderTriTagWrap(c, card, [...TRI_CTX1, ...TRI_CTX2]));
 
-  // Cas montage / son (ligne dédiée)
-  p.appendChild(renderTriTagWrap(c, card, TRI_CASES));
+  // Montage & son (boutons)
+  p.appendChild(groupLabel('Montage & son'));
+  p.appendChild(renderTriTagWrap(c, card, TRI_CASES, 'g2'));
 
-  // Pratique (type de transe filmée)
-  const pracTitle = document.createElement('div');
-  pracTitle.className = 'tri-group-label';
-  pracTitle.textContent = 'Pratique';
-  p.appendChild(pracTitle);
-  p.appendChild(renderTriTagWrap(c, card, TRI_PRACTICES));
+  // Pratique (boutons)
+  p.appendChild(groupLabel('Pratique'));
+  p.appendChild(renderTriTagWrap(c, card, TRI_PRACTICES, 'g3'));
 
-  // Validation : OK / Refusé (en bas, après le classement)
-  const valTitle = document.createElement('div');
-  valTitle.className = 'tri-group-label';
-  valTitle.textContent = 'Validation';
-  p.appendChild(valTitle);
+  // Commentaire (en bas, au-dessus de la validation)
+  p.appendChild(groupLabel('Commentaire'));
+  const note = document.createElement('input');
+  note.className = 'tri-field tri-comment';
+  note.type = 'text';
+  note.placeholder = 'une note libre…';
+  note.value = c.tri_note || '';
+  const saveNote = () => {
+    const v = note.value.trim();
+    const ids = triTargets(c);
+    let changed = 0;
+    for (const id of ids) {
+      const cc = state.clips.find(x => x.id === id);
+      if (!cc) continue;
+      if ((cc.tri_note || '') !== v) { updateTri(cc, cardEl(id), { tri_note: v || null }); changed++; }
+      if (id !== c.id) { const el = cardEl(id); const inp = el && el.querySelector('.tri-comment'); if (inp) inp.value = v; }
+    }
+    if (ids.length > 1 && changed) toast(`Commentaire copié sur ${ids.length} clips`);
+  };
+  note.addEventListener('change', saveNote);
+  note.addEventListener('blur', saveNote);
+  p.appendChild(note);
+
+  // Validation
+  p.appendChild(groupLabel('Validation'));
   p.appendChild(rowS);
 
   return p;
