@@ -886,6 +886,7 @@ const TRI_TAGS = [
   ['nathalie_facilite', 'Nath. facilite'],
   ['nathalie_sol', 'Nath. au sol'],
   ['deja_monte', 'Déjà monté'],
+  ['son_origine', "Son d'origine ++"],
 ];
 
 // Pratiques de transe (Innerdance couvre aussi la Kundalini Activation)
