@@ -643,6 +643,7 @@ function updateCounts() {
 // ---------- GALLERY RENDER ----------
 // IntersectionObserver pour lazy-load des vignettes (image ou video)
 let thumbObserver = null;
+let activePreview = null; // une seule vidéo d'aperçu décodée à la fois (anti-freeze)
 function getThumbObserver() {
   if (thumbObserver) return thumbObserver;
   thumbObserver = new IntersectionObserver((entries) => {
@@ -735,7 +736,10 @@ function makeCard(c) {
 
   const preview = {
     video: null,
+    pendingRatio: null,
     ensure() {
+      if (activePreview && activePreview !== this) activePreview.stop(); // une seule à la fois
+      activePreview = this;
       if (!this.video) {
         const v = document.createElement('video');
         v.src = c.r2_url;
@@ -746,6 +750,12 @@ function makeCard(c) {
         v.style.inset = '0';
         v.addEventListener('timeupdate', () => {
           if (!scrubbing && v.duration) scrub.value = String(Math.round((v.currentTime / v.duration) * 1000));
+        });
+        v.addEventListener('seeked', () => {
+          if (this.pendingRatio != null && v.duration) {
+            const t = this.pendingRatio; this.pendingRatio = null;
+            if (Math.abs((v.currentTime / v.duration) - t) > 0.01) v.currentTime = t * v.duration;
+          }
         });
         thumb.appendChild(v);
         this.video = v;
@@ -759,25 +769,30 @@ function makeCard(c) {
       v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
     },
     seek(ratio) {
-      // Pas de pause : si ça joue, la lecture continue à la nouvelle position.
+      // Pas de pause : si ça joue, la lecture continue. On n'empile pas les seeks.
       const v = this.ensure();
-      const go = () => { if (v.duration) v.currentTime = ratio * v.duration; };
+      const go = () => {
+        if (!v.duration) return;
+        if (v.seeking) { this.pendingRatio = ratio; return; }
+        v.currentTime = ratio * v.duration;
+      };
       if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true });
     },
     stop() {
-      if (this.video) { this.video.pause(); this.video.remove(); this.video = null; }
+      if (this.video) {
+        this.video.pause();
+        this.video.removeAttribute('src');
+        try { this.video.load(); } catch (e) {}
+        this.video.remove();
+        this.video = null;
+      }
+      this.pendingRatio = null;
       thumb.classList.remove('previewing');
+      if (activePreview === this) activePreview = null;
     },
   };
   card._preview = preview;
   scrub.addEventListener('input', () => preview.seek(Number(scrub.value) / 1000));
-  // Survol de la barre = déplace la lecture sans clic
-  scrub.addEventListener('mousemove', (e) => {
-    const w = scrub.clientWidth || 1;
-    const r = Math.max(0, Math.min(1, e.offsetX / w));
-    scrub.value = String(Math.round(r * 1000));
-    preview.seek(r);
-  });
 
   if (c.thumbnail_url) {
     const img = document.createElement('img');
