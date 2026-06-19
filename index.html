@@ -346,9 +346,12 @@ body.tri-on .card.tri-refuse { border-color: #d98a8a; opacity: 0.5; }
 }
 .tri-status-btn.ok.on { background: #7fc77f; color: #093009; border-color: #7fc77f; }
 .tri-status-btn.refuse.on { background: #d98a8a; color: #3a0a0a; border-color: #d98a8a; }
-.tri-stars { display: flex; gap: 2px; cursor: pointer; }
-.tri-stars .st { font-size: 19px; line-height: 1; color: #ebd3a0; opacity: 0.35; padding: 2px 3px; }
+.tri-stars { display: flex; flex-wrap: wrap; gap: 1px; cursor: pointer; }
+.tri-stars .st { font-size: 16px; line-height: 1; color: #ebd3a0; opacity: 0.35; padding: 1px 2px; }
 .tri-stars .st.on { opacity: 1; }
+.tri-rating-val { color: #ebd3a0; font-size: 12px; font-weight: 600; margin-left: 6px; align-self: center; font-variant-numeric: tabular-nums; }
+.tri-group-label { color: rgba(235,211,160,0.5); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin: 2px 0 4px; }
+.tri-tags .tg-prac { color: #b7d8c9; }
 .tri-note {
   width: 100%; box-sizing: border-box; margin-bottom: 7px;
   background: rgba(0,0,0,0.25); border: 1px solid rgba(235,211,160,0.2);

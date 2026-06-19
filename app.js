@@ -841,6 +841,14 @@ const TRI_TAGS = [
   ['deja_monte', 'Déjà monté'],
 ];
 
+// Pratiques de transe (Innerdance couvre aussi la Kundalini Activation)
+const TRI_PRACTICES = [
+  ['innerdance', 'Innerdance'],
+  ['breathwork', 'Breathwork'],
+  ['qi_cleansing', 'Qi cleansing'],
+  ['cacao', 'Cacao'],
+];
+
 function triHas(c, tag) { return Array.isArray(c.tri_tags) && c.tri_tags.includes(tag); }
 
 function setCardTriVisual(card, c) {
@@ -907,12 +915,15 @@ function makeTriPanel(c, card) {
   rowS.appendChild(noB);
   p.appendChild(rowS);
 
-  // Note : 0 à 5 étoiles
+  // Note : 0 à 10 étoiles (aligné sur le score Gemini /10)
   const rowR = document.createElement('div');
   rowR.className = 'tri-row';
   const stars = document.createElement('div');
   stars.className = 'tri-stars';
-  for (let i = 1; i <= 5; i++) {
+  const ratingVal = document.createElement('span');
+  ratingVal.className = 'tri-rating-val';
+  const showVal = (n) => { ratingVal.textContent = n ? `${n}/10` : ''; };
+  for (let i = 1; i <= 10; i++) {
     const s = document.createElement('span');
     s.className = 'st';
     s.innerHTML = '&#9733;';
@@ -920,11 +931,14 @@ function makeTriPanel(c, card) {
       const nv = (c.tri_rating === i) ? 0 : i;
       updateTri(c, card, { tri_rating: nv });
       paintStars(stars, nv);
+      showVal(nv);
     });
     stars.appendChild(s);
   }
   paintStars(stars, c.tri_rating || 0);
+  showVal(c.tri_rating || 0);
   rowR.appendChild(stars);
+  rowR.appendChild(ratingVal);
   p.appendChild(rowR);
 
   // Note libre
@@ -942,7 +956,11 @@ function makeTriPanel(c, card) {
   note.addEventListener('blur', saveNote);
   p.appendChild(note);
 
-  // Tags (contexte + cas particuliers)
+  // Tags contexte + cas particuliers
+  const ctxTitle = document.createElement('div');
+  ctxTitle.className = 'tri-group-label';
+  ctxTitle.textContent = 'Contexte';
+  p.appendChild(ctxTitle);
   const tagsWrap = document.createElement('div');
   tagsWrap.className = 'tri-tags';
   for (const [val, label] of TRI_TAGS) {
@@ -957,6 +975,26 @@ function makeTriPanel(c, card) {
     tagsWrap.appendChild(lab);
   }
   p.appendChild(tagsWrap);
+
+  // Pratique (type de transe filmée)
+  const pracTitle = document.createElement('div');
+  pracTitle.className = 'tri-group-label';
+  pracTitle.textContent = 'Pratique';
+  p.appendChild(pracTitle);
+  const pracWrap = document.createElement('div');
+  pracWrap.className = 'tri-tags';
+  for (const [val, label] of TRI_PRACTICES) {
+    const lab = document.createElement('label');
+    lab.className = 'tg-prac';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = triHas(c, val);
+    cb.addEventListener('change', () => toggleTriTag(c, card, val, cb.checked));
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(' ' + label));
+    pracWrap.appendChild(lab);
+  }
+  p.appendChild(pracWrap);
 
   return p;
 }
