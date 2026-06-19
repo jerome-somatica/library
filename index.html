@@ -363,12 +363,16 @@ body.tri-on .card.tri-refuse { border-color: #d98a8a; opacity: 0.5; }
 .tri-tags input { width: 14px; height: 14px; accent-color: #ebd3a0; }
 .tri-tags .tg-nathalie_sol { color: #e8b0b0; }
 .tri-tags .tg-deja_monte { color: #a9d5e8; }
-.card .thumb.previewing .duration,
 .card .thumb.previewing .play-icon { display: none; }
-/* Réglette d'aperçu dans le panneau de tri (sous les étoiles, pleine largeur) */
-.tri-scrub { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
-.tri-scrub .scrub-ico { font-size: 13px; color: rgba(235,211,160,0.55); }
-.tri-scrub .scrub { flex: 1; width: 100%; margin: 0; height: 18px; accent-color: #ebd3a0; cursor: pointer; }
+/* Réglette d'aperçu en overlay bas de vignette, visible seulement en Mode tri */
+.card .thumb .scrub { display: none; }
+body.tri-on .card .thumb .scrub {
+  display: block; position: absolute; left: 5px; right: 5px; bottom: 5px; width: auto;
+  margin: 0; z-index: 5; height: 16px; cursor: pointer; accent-color: #ebd3a0;
+  background: rgba(0,0,0,0.4); border-radius: 8px;
+}
+body.tri-on .card .thumb .duration,
+body.tri-on .card .thumb .usable-badge { display: none; }
 
 /* Sentinel (infinite scroll trigger) */
 .sentinel {

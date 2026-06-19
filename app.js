@@ -705,9 +705,20 @@ function makeCard(c) {
   const thumb = document.createElement('div');
   thumb.className = 'thumb';
 
-  // Priorité : thumbnail_url (JPG léger) sinon <video preload=metadata>.
-  // Aperçu : lecture AVEC son au survol (ordi) ; la réglette du panneau de tri
-  // fait défiler l'image (scrub) et marche aussi au doigt sur mobile.
+  // Aperçu : lecture AVEC son au survol (ordi). Réglette en overlay bas de vignette,
+  // visible en Mode tri : déplace la lecture SANS la couper (et défile l'image sur mobile).
+  const scrub = document.createElement('input');
+  scrub.type = 'range';
+  scrub.className = 'scrub';
+  scrub.min = '0'; scrub.max = '1000'; scrub.value = '0';
+  scrub.title = 'Avancer dans la vidéo';
+  let scrubbing = false;
+  scrub.addEventListener('click', e => e.stopPropagation());
+  scrub.addEventListener('pointerdown', e => { e.stopPropagation(); scrubbing = true; });
+  const endScrub = () => { scrubbing = false; };
+  scrub.addEventListener('pointerup', endScrub);
+  scrub.addEventListener('change', endScrub);
+
   const preview = {
     video: null,
     ensure() {
@@ -719,6 +730,9 @@ function makeCard(c) {
         v.muted = true;
         v.style.position = 'absolute';
         v.style.inset = '0';
+        v.addEventListener('timeupdate', () => {
+          if (!scrubbing && v.duration) scrub.value = String(Math.round((v.currentTime / v.duration) * 1000));
+        });
         thumb.appendChild(v);
         this.video = v;
         thumb.classList.add('previewing');
@@ -731,8 +745,8 @@ function makeCard(c) {
       v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
     },
     seek(ratio) {
+      // Pas de pause : si ça joue, la lecture continue à la nouvelle position.
       const v = this.ensure();
-      v.pause();
       const go = () => { if (v.duration) v.currentTime = ratio * v.duration; };
       if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true });
     },
@@ -742,6 +756,7 @@ function makeCard(c) {
     },
   };
   card._preview = preview;
+  scrub.addEventListener('input', () => preview.seek(Number(scrub.value) / 1000));
 
   if (c.thumbnail_url) {
     const img = document.createElement('img');
@@ -765,6 +780,8 @@ function makeCard(c) {
   // Survol (ordi) : lecture avec son ; sortie : on coupe l'aperçu.
   thumb.addEventListener('mouseenter', () => preview.play());
   thumb.addEventListener('mouseleave', () => preview.stop());
+
+  thumb.appendChild(scrub);
 
   const playIcon = document.createElement('div');
   playIcon.className = 'play-icon';
@@ -948,14 +965,17 @@ function makeTriPanel(c, card) {
     noB.classList.toggle('on', c.tri_status === 'refuse');
   };
   okB.addEventListener('click', () => {
-    updateTri(c, card, { tri_status: c.tri_status === 'ok' ? 'a_trier' : 'ok' })
-      .then(() => { reflectStatus(); updateTriProgressDebounced(); maybeHideTriaged(c, card); });
+    saveNote(); // enregistre la note tapée avant d'évaluer le masquage
+    updateTri(c, card, { tri_status: c.tri_status === 'ok' ? 'a_trier' : 'ok' });
     reflectStatus();
+    updateTriProgressDebounced();
+    maybeHideTriaged(c, card);
   });
   noB.addEventListener('click', () => {
-    updateTri(c, card, { tri_status: c.tri_status === 'refuse' ? 'a_trier' : 'refuse' })
-      .then(() => { reflectStatus(); updateTriProgressDebounced(); maybeHideTriaged(c, card); });
+    updateTri(c, card, { tri_status: c.tri_status === 'refuse' ? 'a_trier' : 'refuse' });
     reflectStatus();
+    updateTriProgressDebounced();
+    maybeHideTriaged(c, card);
   });
   reflectStatus();
   rowS.appendChild(okB);
@@ -987,27 +1007,6 @@ function makeTriPanel(c, card) {
   rowR.appendChild(ratingVal);
   p.appendChild(rowR);
 
-  // Réglette d'aperçu : fait défiler l'image de la vidéo (marche aussi au doigt)
-  const scrubRow = document.createElement('div');
-  scrubRow.className = 'tri-scrub';
-  const scrubIco = document.createElement('span');
-  scrubIco.className = 'scrub-ico';
-  scrubIco.textContent = '🎞';
-  const scrub = document.createElement('input');
-  scrub.type = 'range';
-  scrub.className = 'scrub';
-  scrub.min = '0'; scrub.max = '1000'; scrub.value = '0';
-  scrub.title = 'Faire défiler la vidéo';
-  scrub.addEventListener('click', e => e.stopPropagation());
-  scrub.addEventListener('pointerdown', e => e.stopPropagation());
-  scrub.addEventListener('input', () => {
-    const pv = card._preview;
-    if (pv) pv.seek(Number(scrub.value) / 1000);
-  });
-  scrubRow.appendChild(scrubIco);
-  scrubRow.appendChild(scrub);
-  p.appendChild(scrubRow);
-
   // Note libre
   const note = document.createElement('input');
   note.className = 'tri-note';
@@ -1016,8 +1015,8 @@ function makeTriPanel(c, card) {
   note.value = c.tri_note || '';
   const saveNote = () => {
     const v = note.value.trim();
-    if ((c.tri_note || '') === v) return;
-    updateTri(c, card, { tri_note: v || null }).then(() => maybeHideTriaged(c, card));
+    if ((c.tri_note || '') !== v) updateTri(c, card, { tri_note: v || null });
+    maybeHideTriaged(c, card);
   };
   note.addEventListener('change', saveNote);
   note.addEventListener('blur', saveNote);
