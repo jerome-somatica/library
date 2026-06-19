@@ -771,6 +771,13 @@ function makeCard(c) {
   };
   card._preview = preview;
   scrub.addEventListener('input', () => preview.seek(Number(scrub.value) / 1000));
+  // Survol de la barre = déplace la lecture sans clic
+  scrub.addEventListener('mousemove', (e) => {
+    const w = scrub.clientWidth || 1;
+    const r = Math.max(0, Math.min(1, e.offsetX / w));
+    scrub.value = String(Math.round(r * 1000));
+    preview.seek(r);
+  });
 
   if (c.thumbnail_url) {
     const img = document.createElement('img');
@@ -1323,7 +1330,7 @@ let hoveredCardId = null;
 document.addEventListener('keydown', (e) => {
   if (!state.triMode || !hoveredCardId) return;
   const ae = document.activeElement;
-  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+  if (ae && (ae.tagName === 'TEXTAREA' || (ae.tagName === 'INPUT' && ae.type !== 'range'))) return;
   let digit = null;
   if (/^Numpad[0-9]$/.test(e.code)) digit = +e.code.slice(6);
   else if (/^Digit[0-9]$/.test(e.code)) digit = +e.code.slice(5);
