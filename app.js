@@ -1684,6 +1684,7 @@ function openModal(id) {
   const c = state.clips.find(x => x.id === id);
   if (!c) return;
   if (activePreview) activePreview.stop(); // couper les aperçus de la galerie derrière la modale
+  document.body.classList.add('modal-open'); // masque la galerie (évite que les vidéos percent par-dessus)
   state.currentModalId = id;
   modalTitle.textContent = c.ambiance ? c.ambiance : (c.file_name || 'Clip');
   if (clipPreviewable(c)) {
@@ -1766,6 +1767,7 @@ function addEditableField(label, key, value, multi) {
 
 function closeModal() {
   modalBg.classList.remove('active');
+  document.body.classList.remove('modal-open');
   modalVideo.pause();
   modalVideo.src = '';
   modalVideo.style.display = '';
