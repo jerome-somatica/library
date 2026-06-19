@@ -887,6 +887,8 @@ function makeCard(c) {
     if (state.triMode) handleSelectClick(c.id, e.shiftKey); // en mode tri, clic = sélection
     else openModal(c.id);
   });
+  card.addEventListener('mouseenter', () => { hoveredCardId = c.id; });
+  card.addEventListener('mouseleave', () => { if (hoveredCardId === c.id) hoveredCardId = null; });
 
   return card;
 }
@@ -1027,6 +1029,13 @@ function setTriStatus(c, card, status) {
 
 function paintStars(container, n) {
   container.querySelectorAll('.st').forEach((s, idx) => s.classList.toggle('on', idx < n));
+}
+// Repeint les étoiles d'une carte depuis l'extérieur (notation clavier)
+function paintCardStars(card, n) {
+  if (!card) return;
+  card.querySelectorAll('.tri-stars .st').forEach((s, idx) => s.classList.toggle('on', idx < n));
+  const rv = card.querySelector('.tri-rating-val');
+  if (rv) rv.textContent = n ? `${n}/10` : '';
 }
 
 // "Trié" : Refusé tout court, OU OK avec une note écrite.
@@ -1307,6 +1316,27 @@ if (triHideCheckbox) triHideCheckbox.checked = !!state.filters.triHide;
 if (triRefusedCheckbox) triRefusedCheckbox.checked = !!state.filters.triRefused;
 buildBatchTriBar();
 setTriMode((() => { try { return localStorage.getItem('library_tri_mode') === '1'; } catch (e) { return false; } })());
+
+// Notation au clavier : en mode tri, souris au-dessus d'une vignette + pavé num.
+// 0 = 1 étoile, 9 = 10 étoiles (touche + 1).
+let hoveredCardId = null;
+document.addEventListener('keydown', (e) => {
+  if (!state.triMode || !hoveredCardId) return;
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+  let digit = null;
+  if (/^Numpad[0-9]$/.test(e.code)) digit = +e.code.slice(6);
+  else if (/^Digit[0-9]$/.test(e.code)) digit = +e.code.slice(5);
+  if (digit === null) return;
+  e.preventDefault();
+  const note = digit + 1;
+  const c = state.clips.find(x => x.id === hoveredCardId);
+  if (!c) return;
+  const card = cardEl(hoveredCardId);
+  updateTri(c, card, { tri_rating: note });
+  paintCardStars(card, note);
+  maybeHideTriaged(c, card);
+});
 
 // ---------- DRAWER ----------
 function openDrawer() {
