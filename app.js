@@ -39,6 +39,7 @@ const LIGHT_COLS = [
   'quality_score', 'persons_count', 'persons_detected',
   'music_present', 'has_speech', 'emotional_intensity', 'emotional_states',
   'usable_for_reel', 'location_name',
+  'tri_status', 'tri_rating', 'tri_note', 'tri_tags',
 ].join(',');
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -66,6 +67,7 @@ const DEFAULT_FILTERS = {
   speech: '',    // '' | 'with' | 'without'
   usableReel: false,
   usage: '',     // '' | 'unused' | 'used'
+  triHide: false, // mode tri : masquer les clips déjà triés (statut != a_trier)
   emotions: [],  // multi
   tags: [],      // multi
   personsNames: [],  // multi (noms Apple)
@@ -74,6 +76,7 @@ const DEFAULT_FILTERS = {
 const state = {
   clips: [],                  // cumul paginé
   selection: new Set(),
+  triMode: false,             // mode tri actif (panneau de tri par carte)
   currentModalId: null,
   session: null,
   filters: loadFilters(),
@@ -446,6 +449,8 @@ function buildQuery() {
 
   if (f.usableReel) q = q.eq('usable_for_reel', true);
 
+  if (f.triHide) q = q.eq('tri_status', 'a_trier');
+
   if (f.persons === '0') q = q.eq('persons_count', 0);
   else if (f.persons === '1') q = q.eq('persons_count', 1);
   else if (f.persons === '2+') q = q.gte('persons_count', 2);
@@ -817,9 +822,167 @@ function makeCard(c) {
 
   card.appendChild(info);
 
+  // Panneau de tri (visible seulement en mode tri, géré en CSS via body.tri-on)
+  setCardTriVisual(card, c);
+  card.appendChild(makeTriPanel(c, card));
+
   card.addEventListener('click', () => openModal(c.id));
 
   return card;
+}
+
+// ---------- MODE TRI ----------
+const TRI_TAGS = [
+  ['formation', 'Formation'],
+  ['seance', 'Séance'],
+  ['individuel', 'Individuel'],
+  ['nathalie_facilite', 'Nath. facilite'],
+  ['nathalie_sol', 'Nath. au sol'],
+  ['deja_monte', 'Déjà monté'],
+];
+
+function triHas(c, tag) { return Array.isArray(c.tri_tags) && c.tri_tags.includes(tag); }
+
+function setCardTriVisual(card, c) {
+  card.classList.toggle('tri-ok', c.tri_status === 'ok');
+  card.classList.toggle('tri-refuse', c.tri_status === 'refuse');
+}
+
+// Reflète localement la règle du trigger SQL vid_tri_sync (pour la pastille ✨ REEL)
+function recomputeUsable(c) {
+  c.usable_for_reel = !(c.tri_status === 'refuse' || triHas(c, 'nathalie_sol'));
+}
+
+async function updateTri(c, card, patch) {
+  Object.assign(c, patch);
+  recomputeUsable(c);
+  if (card) setCardTriVisual(card, c);
+  const { error } = await sb.from('video_library').update(patch).eq('id', c.id);
+  if (error) { console.error('updateTri', error); toast('Tri non sauvegardé', 'error'); return false; }
+  return true;
+}
+
+function toggleTriTag(c, card, tag, on) {
+  const tags = Array.isArray(c.tri_tags) ? [...c.tri_tags] : [];
+  const i = tags.indexOf(tag);
+  if (on && i < 0) tags.push(tag);
+  if (!on && i >= 0) tags.splice(i, 1);
+  updateTri(c, card, { tri_tags: tags });
+}
+
+function paintStars(container, n) {
+  container.querySelectorAll('.st').forEach((s, idx) => s.classList.toggle('on', idx < n));
+}
+
+function makeTriPanel(c, card) {
+  const p = document.createElement('div');
+  p.className = 'tri-panel';
+  p.addEventListener('click', e => e.stopPropagation());
+
+  // Statut : OK / Refusé
+  const rowS = document.createElement('div');
+  rowS.className = 'tri-row';
+  const okB = document.createElement('button');
+  okB.className = 'tri-status-btn ok';
+  okB.textContent = 'OK';
+  const noB = document.createElement('button');
+  noB.className = 'tri-status-btn refuse';
+  noB.textContent = 'Refusé';
+  const reflectStatus = () => {
+    okB.classList.toggle('on', c.tri_status === 'ok');
+    noB.classList.toggle('on', c.tri_status === 'refuse');
+  };
+  okB.addEventListener('click', () => {
+    updateTri(c, card, { tri_status: c.tri_status === 'ok' ? 'a_trier' : 'ok' })
+      .then(() => { reflectStatus(); updateTriProgressDebounced(); });
+    reflectStatus();
+  });
+  noB.addEventListener('click', () => {
+    updateTri(c, card, { tri_status: c.tri_status === 'refuse' ? 'a_trier' : 'refuse' })
+      .then(() => { reflectStatus(); updateTriProgressDebounced(); });
+    reflectStatus();
+  });
+  reflectStatus();
+  rowS.appendChild(okB);
+  rowS.appendChild(noB);
+  p.appendChild(rowS);
+
+  // Note : 0 à 5 étoiles
+  const rowR = document.createElement('div');
+  rowR.className = 'tri-row';
+  const stars = document.createElement('div');
+  stars.className = 'tri-stars';
+  for (let i = 1; i <= 5; i++) {
+    const s = document.createElement('span');
+    s.className = 'st';
+    s.innerHTML = '&#9733;';
+    s.addEventListener('click', () => {
+      const nv = (c.tri_rating === i) ? 0 : i;
+      updateTri(c, card, { tri_rating: nv });
+      paintStars(stars, nv);
+    });
+    stars.appendChild(s);
+  }
+  paintStars(stars, c.tri_rating || 0);
+  rowR.appendChild(stars);
+  p.appendChild(rowR);
+
+  // Note libre
+  const note = document.createElement('input');
+  note.className = 'tri-note';
+  note.type = 'text';
+  note.placeholder = 'note…';
+  note.value = c.tri_note || '';
+  const saveNote = () => {
+    const v = note.value.trim();
+    if ((c.tri_note || '') === v) return;
+    updateTri(c, card, { tri_note: v || null });
+  };
+  note.addEventListener('change', saveNote);
+  note.addEventListener('blur', saveNote);
+  p.appendChild(note);
+
+  // Tags (contexte + cas particuliers)
+  const tagsWrap = document.createElement('div');
+  tagsWrap.className = 'tri-tags';
+  for (const [val, label] of TRI_TAGS) {
+    const lab = document.createElement('label');
+    lab.className = 'tg-' + val;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = triHas(c, val);
+    cb.addEventListener('change', () => toggleTriTag(c, card, val, cb.checked));
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(' ' + label));
+    tagsWrap.appendChild(lab);
+  }
+  p.appendChild(tagsWrap);
+
+  return p;
+}
+
+let _triProgT = null;
+function updateTriProgressDebounced() {
+  clearTimeout(_triProgT);
+  _triProgT = setTimeout(updateTriProgress, 700);
+}
+async function updateTriProgress() {
+  const el = document.getElementById('tri-progress');
+  if (!el) return;
+  try {
+    const head = (st) => sb.from('video_library').select('id', { count: 'exact', head: true }).eq('tri_status', st);
+    const [a, o, r] = await Promise.all([head('a_trier'), head('ok'), head('refuse')]);
+    el.textContent = `À trier : ${a.count ?? '?'} · OK : ${o.count ?? '?'} · Refusé : ${r.count ?? '?'}`;
+  } catch (e) { /* silencieux */ }
+}
+
+function setTriMode(on) {
+  state.triMode = !!on;
+  document.body.classList.toggle('tri-on', state.triMode);
+  const btn = document.getElementById('tri-mode-btn');
+  if (btn) btn.classList.toggle('active', state.triMode);
+  try { localStorage.setItem('library_tri_mode', state.triMode ? '1' : '0'); } catch (e) {}
+  if (state.triMode) updateTriProgress();
 }
 
 // ---------- FILTERS UI WIRE ----------
@@ -845,6 +1008,8 @@ function syncFiltersToUI() {
   if (locationFilter) locationFilter.value = f.location;
   const uf = document.getElementById('usage-filter');
   if (uf) uf.value = f.usage || '';
+  const th = document.getElementById('tri-hide-checkbox');
+  if (th) th.checked = !!f.triHide;
 }
 
 searchInput.addEventListener('input', debounce(e => {
@@ -914,6 +1079,18 @@ resetFiltersBtn.addEventListener('click', () => {
   populateMultiSelect('personsNames', state.catalog.personsNames);
   resetAndReload();
 });
+
+// ---------- MODE TRI WIRING ----------
+const triModeBtn = $('tri-mode-btn');
+const triHideCheckbox = $('tri-hide-checkbox');
+triModeBtn && triModeBtn.addEventListener('click', () => setTriMode(!state.triMode));
+triHideCheckbox && triHideCheckbox.addEventListener('change', () => {
+  state.filters.triHide = triHideCheckbox.checked;
+  resetAndReload();
+});
+// Restaurer l'état du mode tri + la case "masquer les déjà triées"
+if (triHideCheckbox) triHideCheckbox.checked = !!state.filters.triHide;
+setTriMode((() => { try { return localStorage.getItem('library_tri_mode') === '1'; } catch (e) { return false; } })());
 
 // ---------- DRAWER ----------
 function openDrawer() {

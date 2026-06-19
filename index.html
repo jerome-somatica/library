@@ -313,6 +313,54 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
 }
 .card.selected .select-checkbox { background: #ebd3a0; color: #0f2f3a; }
 
+/* ---------- Mode Tri ---------- */
+.btn-tri-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border-radius: 8px;
+  background: transparent; color: #ebd3a0;
+  border: 1px solid rgba(235,211,160,0.35);
+  font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.btn-tri-toggle:hover { background: rgba(235,211,160,0.1); }
+.btn-tri-toggle.active { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+
+.tri-bar { display: none; align-items: center; gap: 16px; flex-wrap: wrap; padding: 8px 0 2px; }
+body.tri-on .tri-bar { display: flex; }
+.tri-bar .tri-hide { display: flex; align-items: center; gap: 7px; color: #ebd3a0; font-size: 13px; cursor: pointer; }
+.tri-bar .tri-hide input { width: 16px; height: 16px; accent-color: #ebd3a0; }
+.tri-bar .tri-progress { color: rgba(235,211,160,0.6); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.card .tri-panel { display: none; }
+body.tri-on .card .tri-panel {
+  display: block; padding: 8px 10px 10px;
+  border-top: 1px solid rgba(235,211,160,0.15);
+  background: #0c2630;
+}
+body.tri-on .card.tri-ok { border-color: #7fc77f; box-shadow: 0 0 0 2px rgba(127,199,127,0.4); }
+body.tri-on .card.tri-refuse { border-color: #d98a8a; opacity: 0.5; }
+.tri-panel .tri-row { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+.tri-status-btn {
+  flex: 1; padding: 6px 0; border-radius: 6px;
+  border: 1px solid rgba(235,211,160,0.3); background: transparent;
+  color: #ebd3a0; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.tri-status-btn.ok.on { background: #7fc77f; color: #093009; border-color: #7fc77f; }
+.tri-status-btn.refuse.on { background: #d98a8a; color: #3a0a0a; border-color: #d98a8a; }
+.tri-stars { display: flex; gap: 2px; cursor: pointer; }
+.tri-stars .st { font-size: 19px; line-height: 1; color: #ebd3a0; opacity: 0.35; padding: 2px 3px; }
+.tri-stars .st.on { opacity: 1; }
+.tri-note {
+  width: 100%; box-sizing: border-box; margin-bottom: 7px;
+  background: rgba(0,0,0,0.25); border: 1px solid rgba(235,211,160,0.2);
+  border-radius: 6px; color: #f3e6c8; font-size: 12px; padding: 6px 8px;
+}
+.tri-note::placeholder { color: rgba(235,211,160,0.4); }
+.tri-tags { display: flex; flex-wrap: wrap; gap: 5px 10px; }
+.tri-tags label { display: flex; align-items: center; gap: 4px; font-size: 11px; color: rgba(235,211,160,0.85); cursor: pointer; }
+.tri-tags input { width: 14px; height: 14px; accent-color: #ebd3a0; }
+.tri-tags .tg-nathalie_sol { color: #e8b0b0; }
+.tri-tags .tg-deja_monte { color: #a9d5e8; }
+
 /* Sentinel (infinite scroll trigger) */
 .sentinel {
   grid-column: 1 / -1;
@@ -1338,6 +1386,18 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
         <span>⚙️ Filtres</span>
         <span class="badge" id="active-filters-badge" style="display:none">0</span>
       </button>
+
+      <button class="btn-tri-toggle" id="tri-mode-btn" title="Activer le mode tri pour classer les clips">
+        <span>🏷️ Mode tri</span>
+      </button>
+    </div>
+
+    <!-- Barre du mode tri (visible seulement quand le mode tri est actif) -->
+    <div class="tri-bar" id="tri-bar">
+      <label class="tri-hide">
+        <input type="checkbox" id="tri-hide-checkbox"> Masquer les déjà triées
+      </label>
+      <span class="tri-progress" id="tri-progress"></span>
     </div>
 
     <!-- Ligne 2 : presets rapides -->
