@@ -919,10 +919,9 @@ const TRI_PRACTICES = [
 ];
 
 // Rendu d'une ligne de cases à cocher (tags) pour une liste donnée
-function groupLabel(txt) {
+function triDivider() {
   const d = document.createElement('div');
-  d.className = 'tri-group-label';
-  d.textContent = txt;
+  d.className = 'tri-sep';
   return d;
 }
 // Rendu d'un groupe de tags en boutons-pastilles (toggle)
@@ -1077,10 +1076,9 @@ function makeTriPanel(c, card) {
   rowS.appendChild(okB);
   rowS.appendChild(noB);
 
-  // Note : 10 étoiles + score /10
-  p.appendChild(groupLabel('Note'));
+  // Note (étoiles) + Participante sur la même ligne
   const rowR = document.createElement('div');
-  rowR.className = 'tri-row';
+  rowR.className = 'tri-row tri-toprow';
   const stars = document.createElement('div');
   stars.className = 'tri-stars';
   const ratingVal = document.createElement('span');
@@ -1103,14 +1101,11 @@ function makeTriPanel(c, card) {
   showVal(c.tri_rating || 0);
   rowR.appendChild(stars);
   rowR.appendChild(ratingVal);
-  p.appendChild(rowR);
 
-  // Participante (sous la note) + autocomplétion
-  p.appendChild(groupLabel('Participante'));
   const part = document.createElement('input');
   part.className = 'tri-field tri-participante';
   part.type = 'text';
-  part.placeholder = 'nom de la participante…';
+  part.placeholder = 'participante…';
   part.setAttribute('list', 'participantes-list');
   part.value = c.tri_participante || '';
   const savePart = () => {
@@ -1127,26 +1122,28 @@ function makeTriPanel(c, card) {
   };
   part.addEventListener('change', savePart);
   part.addEventListener('blur', savePart);
-  p.appendChild(part);
+  rowR.appendChild(part);
+  p.appendChild(rowR);
+  p.appendChild(triDivider());
 
-  // Contexte (boutons)
-  p.appendChild(groupLabel('Contexte'));
-  p.appendChild(renderTriTagWrap(c, card, [...TRI_CTX1, ...TRI_CTX2]));
+  // Contexte : 2 lignes (Formation/Séance/Individuel, puis Nath/Nath/Duo)
+  p.appendChild(renderTriTagWrap(c, card, TRI_CTX1));
+  p.appendChild(renderTriTagWrap(c, card, TRI_CTX2));
+  p.appendChild(triDivider());
 
-  // Montage & son (boutons)
-  p.appendChild(groupLabel('Montage & son'));
+  // Montage & son
   p.appendChild(renderTriTagWrap(c, card, TRI_CASES, 'g2'));
+  p.appendChild(triDivider());
 
-  // Pratique (boutons)
-  p.appendChild(groupLabel('Pratique'));
+  // Pratique
   p.appendChild(renderTriTagWrap(c, card, TRI_PRACTICES, 'g3'));
+  p.appendChild(triDivider());
 
-  // Commentaire (en bas, au-dessus de la validation)
-  p.appendChild(groupLabel('Commentaire'));
+  // Commentaire
   const note = document.createElement('input');
   note.className = 'tri-field tri-comment';
   note.type = 'text';
-  note.placeholder = 'une note libre…';
+  note.placeholder = 'commentaire…';
   note.value = c.tri_note || '';
   const saveNote = () => {
     const v = note.value.trim();
@@ -1163,9 +1160,9 @@ function makeTriPanel(c, card) {
   note.addEventListener('change', saveNote);
   note.addEventListener('blur', saveNote);
   p.appendChild(note);
+  p.appendChild(triDivider());
 
   // Validation
-  p.appendChild(groupLabel('Validation'));
   p.appendChild(rowS);
 
   return p;
