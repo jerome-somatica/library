@@ -926,12 +926,51 @@ async function updateTri(c, card, patch) {
   return true;
 }
 
+// Cible d'une action du panneau : toute la sélection si la carte en fait partie
+// (et qu'il y en a plusieurs), sinon juste cette carte.
+function triTargets(c) {
+  return (state.selection.has(c.id) && state.selection.size > 1) ? [...state.selection] : [c.id];
+}
+function cardEl(id) { return gallery.querySelector(`.card[data-id="${id}"]`); }
+
 function toggleTriTag(c, card, tag, on) {
-  const tags = Array.isArray(c.tri_tags) ? [...c.tri_tags] : [];
-  const i = tags.indexOf(tag);
-  if (on && i < 0) tags.push(tag);
-  if (!on && i >= 0) tags.splice(i, 1);
-  updateTri(c, card, { tri_tags: tags });
+  const ids = triTargets(c);
+  for (const id of ids) {
+    const cc = state.clips.find(x => x.id === id);
+    if (!cc) continue;
+    const tags = Array.isArray(cc.tri_tags) ? [...cc.tri_tags] : [];
+    const i = tags.indexOf(tag);
+    if (on && i < 0) tags.push(tag);
+    if (!on && i >= 0) tags.splice(i, 1);
+    updateTri(cc, cardEl(id), { tri_tags: tags });
+  }
+  if (ids.length > 1) { toast(`${ids.length} clips taggés`); renderGallery(); }
+}
+
+// Applique un statut à la carte, ou à toute la sélection si la carte en fait partie (multi).
+function setTriStatus(c, card, status) {
+  const ids = triTargets(c);
+  for (const id of ids) {
+    const cc = state.clips.find(x => x.id === id);
+    if (cc) updateTri(cc, cardEl(id), { tri_status: status });
+  }
+  updateTriProgressDebounced();
+  if (ids.length > 1) {
+    toast(`${ids.length} clips → ${status === 'ok' ? 'OK' : status === 'refuse' ? 'Refusé' : 'à trier'}`);
+    if (state.filters.triHide && !state.filters.triRefused) {
+      const remove = new Set(ids.filter(id => { const cc = state.clips.find(x => x.id === id); return cc && isTriaged(cc); }));
+      if (remove.size) {
+        state.clips = state.clips.filter(x => !remove.has(x.id));
+        if (state.filteredCount != null) state.filteredCount = Math.max(0, state.filteredCount - remove.size);
+      }
+    }
+    state.selection.clear();
+    lastSelIndex = null;
+    updateSelectionBar();
+    renderGallery();
+  } else {
+    maybeHideTriaged(c, card);
+  }
 }
 
 function paintStars(container, n) {
@@ -980,16 +1019,12 @@ function makeTriPanel(c, card) {
     noB.classList.toggle('on', c.tri_status === 'refuse');
   };
   okB.addEventListener('click', () => {
-    updateTri(c, card, { tri_status: c.tri_status === 'ok' ? 'a_trier' : 'ok' });
+    setTriStatus(c, card, c.tri_status === 'ok' ? 'a_trier' : 'ok');
     reflectStatus();
-    updateTriProgressDebounced();
-    maybeHideTriaged(c, card);
   });
   noB.addEventListener('click', () => {
-    updateTri(c, card, { tri_status: c.tri_status === 'refuse' ? 'a_trier' : 'refuse' });
+    setTriStatus(c, card, c.tri_status === 'refuse' ? 'a_trier' : 'refuse');
     reflectStatus();
-    updateTriProgressDebounced();
-    maybeHideTriaged(c, card);
   });
   reflectStatus();
   rowS.appendChild(okB);
