@@ -39,7 +39,7 @@ const LIGHT_COLS = [
   'quality_score', 'persons_count', 'persons_detected',
   'music_present', 'has_speech', 'emotional_intensity', 'emotional_states',
   'usable_for_reel', 'location_name',
-  'tri_status', 'tri_rating', 'tri_note', 'tri_tags',
+  'tri_status', 'tri_rating', 'tri_note', 'tri_tags', 'tri_participante',
 ].join(',');
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -90,7 +90,7 @@ const state = {
   // Catalogues remplis depuis la DB (distinct values)
   catalog: {
     ambiances: [], movements: [], lightings: [], locations: [],
-    emotions: [], tags: [], personsNames: [],
+    emotions: [], tags: [], personsNames: [], participantes: new Set(),
   },
 };
 
@@ -313,7 +313,7 @@ async function bootstrapCatalogs() {
   // Plus simple que des GROUP BY : on lit les 1000 premières lignes analysées.
   const { data, error } = await sb
     .from('video_library')
-    .select('ambiance,movement,lighting,location_name,emotional_states,tags,persons_detected,analysis_status')
+    .select('ambiance,movement,lighting,location_name,emotional_states,tags,persons_detected,analysis_status,tri_participante')
     .limit(2000);
   if (error) { console.warn('catalog load error', error); return; }
 
@@ -338,6 +338,14 @@ async function bootstrapCatalogs() {
   state.catalog.emotions  = toSorted(emo);
   state.catalog.tags      = toSorted(tag);
   state.catalog.personsNames = toSorted(persons);
+
+  // Participantes déjà saisies (pour l'autocomplétion)
+  const participantes = new Set();
+  for (const r of data || []) {
+    if (r.tri_participante) String(r.tri_participante).split(/[,;&]/).forEach(s => { const t = s.trim(); if (t) participantes.add(t); });
+  }
+  state.catalog.participantes = participantes;
+  populateParticipantesDatalist();
 
   populateSelect(ambianceFilter, state.catalog.ambiances, 'Toutes ambiances');
   populateSelect(movementFilter, state.catalog.movements, 'Tous mouvements');
@@ -884,14 +892,17 @@ function makeCard(c) {
 }
 
 // ---------- MODE TRI ----------
-const TRI_TAGS = [
+const TRI_CTX1 = [
   ['formation', 'Formation'],
   ['seance', 'Séance'],
   ['individuel', 'Individuel'],
+];
+const TRI_CTX2 = [
   ['nathalie_facilite', 'Nath. facilite'],
   ['nathalie_sol', 'Nath. au sol'],
   ['duo_jerome_nathalie', 'Duo Jérôme & Nathalie'],
 ];
+const TRI_TAGS = [...TRI_CTX1, ...TRI_CTX2]; // combiné (pour les actions groupées)
 // Cas montage / son, sur leur propre ligne
 const TRI_CASES = [
   ['deja_monte', 'Déjà monté'],
@@ -906,6 +917,37 @@ const TRI_PRACTICES = [
   ['qi_cleansing', 'Qi cleansing'],
   ['cacao', 'Cacao'],
 ];
+
+// Rendu d'une ligne de cases à cocher (tags) pour une liste donnée
+function renderTriTagWrap(c, card, list) {
+  const wrap = document.createElement('div');
+  wrap.className = 'tri-tags';
+  for (const [val, label] of list) {
+    const lab = document.createElement('label');
+    lab.className = 'tg-' + val;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = triHas(c, val);
+    cb.addEventListener('change', () => toggleTriTag(c, card, val, cb.checked));
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(' ' + label));
+    wrap.appendChild(lab);
+  }
+  return wrap;
+}
+// Autocomplétion des participantes : datalist alimenté par les noms déjà saisis
+function populateParticipantesDatalist() {
+  const dl = document.getElementById('participantes-list');
+  if (!dl) return;
+  const names = [...(state.catalog.participantes || [])].sort((a, b) => a.localeCompare(b));
+  dl.innerHTML = names.map(n => `<option value="${escapeAttr(n)}"></option>`).join('');
+}
+function harvestParticipantes(v) {
+  if (!v) return;
+  if (!state.catalog.participantes) state.catalog.participantes = new Set();
+  v.split(/[,;&]/).forEach(s => { const t = s.trim(); if (t) state.catalog.participantes.add(t); });
+  populateParticipantesDatalist();
+}
 
 function triHas(c, tag) { return Array.isArray(c.tri_tags) && c.tri_tags.includes(tag); }
 
@@ -1085,61 +1127,48 @@ function makeTriPanel(c, card) {
   rowR.appendChild(note);
   p.appendChild(rowR);
 
-  // Tags contexte + cas particuliers
+  // Contexte (ligne 1 : Formation / Séance / Individuel)
   const ctxTitle = document.createElement('div');
   ctxTitle.className = 'tri-group-label';
   ctxTitle.textContent = 'Contexte';
   p.appendChild(ctxTitle);
-  const tagsWrap = document.createElement('div');
-  tagsWrap.className = 'tri-tags';
-  for (const [val, label] of TRI_TAGS) {
-    const lab = document.createElement('label');
-    lab.className = 'tg-' + val;
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = triHas(c, val);
-    cb.addEventListener('change', () => toggleTriTag(c, card, val, cb.checked));
-    lab.appendChild(cb);
-    lab.appendChild(document.createTextNode(' ' + label));
-    tagsWrap.appendChild(lab);
-  }
-  p.appendChild(tagsWrap);
+  p.appendChild(renderTriTagWrap(c, card, TRI_CTX1));
 
-  // Cas montage / son (ligne dédiée, sous les choix de contexte)
-  const casesWrap = document.createElement('div');
-  casesWrap.className = 'tri-tags';
-  for (const [val, label] of TRI_CASES) {
-    const lab = document.createElement('label');
-    lab.className = 'tg-' + val;
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = triHas(c, val);
-    cb.addEventListener('change', () => toggleTriTag(c, card, val, cb.checked));
-    lab.appendChild(cb);
-    lab.appendChild(document.createTextNode(' ' + label));
-    casesWrap.appendChild(lab);
-  }
-  p.appendChild(casesWrap);
+  // Participante (nom libre + autocomplétion sur les noms déjà saisis)
+  const part = document.createElement('input');
+  part.className = 'tri-note tri-participante';
+  part.type = 'text';
+  part.placeholder = 'participante…';
+  part.setAttribute('list', 'participantes-list');
+  part.value = c.tri_participante || '';
+  const savePart = () => {
+    const v = part.value.trim();
+    const ids = triTargets(c); // duplique sur la sélection si multi
+    for (const id of ids) {
+      const cc = state.clips.find(x => x.id === id);
+      if (!cc) continue;
+      if ((cc.tri_participante || '') !== v) updateTri(cc, cardEl(id), { tri_participante: v || null });
+      if (id !== c.id) { const el = cardEl(id); const inp = el && el.querySelector('.tri-participante'); if (inp) inp.value = v; }
+    }
+    harvestParticipantes(v);
+    if (ids.length > 1 && v) toast(`Participante copiée sur ${ids.length} clips`);
+  };
+  part.addEventListener('change', savePart);
+  part.addEventListener('blur', savePart);
+  p.appendChild(part);
+
+  // Contexte (ligne 2 : Nath. facilite / Nath. au sol / Duo)
+  p.appendChild(renderTriTagWrap(c, card, TRI_CTX2));
+
+  // Cas montage / son (ligne dédiée)
+  p.appendChild(renderTriTagWrap(c, card, TRI_CASES));
 
   // Pratique (type de transe filmée)
   const pracTitle = document.createElement('div');
   pracTitle.className = 'tri-group-label';
   pracTitle.textContent = 'Pratique';
   p.appendChild(pracTitle);
-  const pracWrap = document.createElement('div');
-  pracWrap.className = 'tri-tags';
-  for (const [val, label] of TRI_PRACTICES) {
-    const lab = document.createElement('label');
-    lab.className = 'tg-prac';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = triHas(c, val);
-    cb.addEventListener('change', () => toggleTriTag(c, card, val, cb.checked));
-    lab.appendChild(cb);
-    lab.appendChild(document.createTextNode(' ' + label));
-    pracWrap.appendChild(lab);
-  }
-  p.appendChild(pracWrap);
+  p.appendChild(renderTriTagWrap(c, card, TRI_PRACTICES));
 
   // Validation : OK / Refusé (en bas, après le classement)
   const valTitle = document.createElement('div');

@@ -358,7 +358,8 @@ body.tri-on .card.tri-refuse { border-color: #d98a8a; opacity: 0.5; }
 .tri-stars .st.on { opacity: 1; }
 .tri-rating-val { color: #ebd3a0; font-size: 12px; font-weight: 600; margin-left: 6px; align-self: center; font-variant-numeric: tabular-nums; }
 .tri-group-label { color: rgba(235,211,160,0.5); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin: 2px 0 4px; }
-.tri-tags .tg-prac { color: #b7d8c9; }
+.tri-tags .tg-innerdance, .tri-tags .tg-breathwork, .tri-tags .tg-qi_cleansing, .tri-tags .tg-cacao { color: #b7d8c9; }
+.tri-participante { margin-top: 2px; }
 .tri-note {
   width: 100%; box-sizing: border-box; margin-bottom: 7px;
   background: rgba(0,0,0,0.25); border: 1px solid rgba(235,211,160,0.2);
@@ -1866,6 +1867,7 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<datalist id="participantes-list"></datalist>
 <script src="app.js"></script>
 <script src="admin.js"></script>
 </body>
