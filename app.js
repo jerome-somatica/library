@@ -449,7 +449,9 @@ function buildQuery() {
 
   if (f.usableReel) q = q.eq('usable_for_reel', true);
 
-  if (f.triHide) q = q.eq('tri_status', 'a_trier');
+  // "Masquer les déjà triées" : on garde visibles les clips pas encore décidés
+  // OU sans note écrite (un clip n'est "trié" que statut décidé + note présente).
+  if (f.triHide) q = q.or('tri_status.eq.a_trier,tri_note.is.null');
 
   if (f.persons === '0') q = q.eq('persons_count', 0);
   else if (f.persons === '1') q = q.eq('persons_count', 1);
@@ -703,7 +705,30 @@ function makeCard(c) {
   const thumb = document.createElement('div');
   thumb.className = 'thumb';
 
-  // Priorité : thumbnail_url (JPG léger, 1 requête légère) sinon <video preload=metadata>
+  // Priorité : thumbnail_url (JPG léger) sinon <video preload=metadata>.
+  // Au survol (ordi) : lecture AVEC son + réglette pour avancer dans le clip.
+  let hoverVideo = null;
+  let scrubbing = false;
+  const scrub = document.createElement('input');
+  scrub.type = 'range';
+  scrub.className = 'scrub';
+  scrub.min = '0'; scrub.max = '1000'; scrub.value = '0';
+  scrub.title = 'Avancer dans la vidéo';
+  const bindPreview = (v) => {
+    v.addEventListener('timeupdate', () => {
+      if (scrubbing || !v.duration) return;
+      scrub.value = String(Math.round((v.currentTime / v.duration) * 1000));
+    });
+  };
+  scrub.addEventListener('click', e => e.stopPropagation());
+  scrub.addEventListener('pointerdown', e => { e.stopPropagation(); scrubbing = true; });
+  scrub.addEventListener('input', () => {
+    if (hoverVideo && hoverVideo.duration) hoverVideo.currentTime = (Number(scrub.value) / 1000) * hoverVideo.duration;
+  });
+  const endScrub = () => { scrubbing = false; };
+  scrub.addEventListener('change', endScrub);
+  scrub.addEventListener('pointerup', endScrub);
+
   if (c.thumbnail_url) {
     const img = document.createElement('img');
     img.loading = 'lazy';
@@ -713,21 +738,27 @@ function makeCard(c) {
     thumb.appendChild(img);
     getThumbObserver().observe(img);
 
-    // Hover → swap vers <video> pour preview (desktop)
+    // Survol → vidéo avec son + réglette de scrub (fallback muet si le navigateur bloque l'audio)
     thumb.addEventListener('mouseenter', () => {
-      if (thumb.querySelector('video')) return;
+      if (hoverVideo) return;
       const v = document.createElement('video');
       v.src = c.r2_url;
-      v.muted = true;
+      v.muted = false;
+      v.volume = 0.85;
       v.playsInline = true;
-      v.autoplay = true;
+      v.loop = true;
       v.style.position = 'absolute';
       v.style.inset = '0';
       thumb.appendChild(v);
+      hoverVideo = v;
+      bindPreview(v);
+      v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+      thumb.classList.add('previewing');
     });
     thumb.addEventListener('mouseleave', () => {
-      const v = thumb.querySelector('video');
-      if (v) v.remove();
+      if (hoverVideo) { hoverVideo.pause(); hoverVideo.remove(); hoverVideo = null; }
+      scrub.value = '0';
+      thumb.classList.remove('previewing');
     });
   } else {
     // Fallback : video preload=metadata lazy via observer
@@ -736,11 +767,23 @@ function makeCard(c) {
     video.preload = 'metadata';
     video.muted = true;
     video.playsInline = true;
-    video.addEventListener('mouseenter', () => { video.play().catch(() => {}); });
-    video.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
+    video.loop = true;
     thumb.appendChild(video);
     getThumbObserver().observe(video);
+    hoverVideo = video;
+    bindPreview(video);
+    thumb.addEventListener('mouseenter', () => {
+      video.muted = false; video.volume = 0.85;
+      video.play().catch(() => { video.muted = true; video.play().catch(() => {}); });
+      thumb.classList.add('previewing');
+    });
+    thumb.addEventListener('mouseleave', () => {
+      video.pause();
+      thumb.classList.remove('previewing');
+    });
   }
+
+  thumb.appendChild(scrub);
 
   const playIcon = document.createElement('div');
   playIcon.className = 'play-icon';
@@ -882,6 +925,27 @@ function paintStars(container, n) {
   container.querySelectorAll('.st').forEach((s, idx) => s.classList.toggle('on', idx < n));
 }
 
+// Un clip n'est "trié" que s'il a un statut décidé (OK/Refusé) ET une note écrite.
+function isTriaged(c) {
+  return c.tri_status && c.tri_status !== 'a_trier' && !!(c.tri_note && String(c.tri_note).trim());
+}
+function removeCardFromGrid(c, card) {
+  card.style.transition = 'opacity .25s ease, transform .25s ease';
+  card.style.opacity = '0';
+  card.style.transform = 'scale(0.92)';
+  setTimeout(() => {
+    card.remove();
+    const i = state.clips.findIndex(x => x.id === c.id);
+    if (i >= 0) state.clips.splice(i, 1);
+    if (state.filteredCount != null) state.filteredCount = Math.max(0, state.filteredCount - 1);
+    updateCounts();
+  }, 250);
+}
+// Masque la vignette au fur et à mesure si le filtre "Masquer les déjà triées" est actif.
+function maybeHideTriaged(c, card) {
+  if (state.filters.triHide && isTriaged(c) && card.isConnected) removeCardFromGrid(c, card);
+}
+
 function makeTriPanel(c, card) {
   const p = document.createElement('div');
   p.className = 'tri-panel';
@@ -902,18 +966,17 @@ function makeTriPanel(c, card) {
   };
   okB.addEventListener('click', () => {
     updateTri(c, card, { tri_status: c.tri_status === 'ok' ? 'a_trier' : 'ok' })
-      .then(() => { reflectStatus(); updateTriProgressDebounced(); });
+      .then(() => { reflectStatus(); updateTriProgressDebounced(); maybeHideTriaged(c, card); });
     reflectStatus();
   });
   noB.addEventListener('click', () => {
     updateTri(c, card, { tri_status: c.tri_status === 'refuse' ? 'a_trier' : 'refuse' })
-      .then(() => { reflectStatus(); updateTriProgressDebounced(); });
+      .then(() => { reflectStatus(); updateTriProgressDebounced(); maybeHideTriaged(c, card); });
     reflectStatus();
   });
   reflectStatus();
   rowS.appendChild(okB);
   rowS.appendChild(noB);
-  p.appendChild(rowS);
 
   // Note : 0 à 10 étoiles (aligné sur le score Gemini /10)
   const rowR = document.createElement('div');
@@ -950,7 +1013,7 @@ function makeTriPanel(c, card) {
   const saveNote = () => {
     const v = note.value.trim();
     if ((c.tri_note || '') === v) return;
-    updateTri(c, card, { tri_note: v || null });
+    updateTri(c, card, { tri_note: v || null }).then(() => maybeHideTriaged(c, card));
   };
   note.addEventListener('change', saveNote);
   note.addEventListener('blur', saveNote);
@@ -995,6 +1058,13 @@ function makeTriPanel(c, card) {
     pracWrap.appendChild(lab);
   }
   p.appendChild(pracWrap);
+
+  // Validation : OK / Refusé (en bas, après le classement)
+  const valTitle = document.createElement('div');
+  valTitle.className = 'tri-group-label';
+  valTitle.textContent = 'Validation';
+  p.appendChild(valTitle);
+  p.appendChild(rowS);
 
   return p;
 }
