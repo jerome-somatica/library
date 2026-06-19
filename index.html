@@ -252,7 +252,7 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
   transform: translate(-50%, -50%);
   width: 48px; height: 48px; border-radius: 50%;
   background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
-  pointer-events: none;
+  pointer-events: auto; cursor: pointer;
 }
 .card .thumb .play-icon::after {
   content: ''; display: block;
@@ -367,7 +367,7 @@ body.tri-on .card.tri-refuse { border-color: #d98a8a; opacity: 0.5; }
 .tri-tags .tg-nathalie_sol { color: #e8b0b0; }
 .tri-tags .tg-deja_monte { color: #a9d5e8; }
 .tri-tags .tg-son_origine { color: #e8d59a; }
-.card .thumb.previewing .play-icon { display: none; }
+/* Le rond ▶ reste visible : c'est le bouton "ouvrir le lecteur" (surtout en mode tri) */
 /* Réglette d'aperçu en overlay bas de vignette, visible seulement en Mode tri */
 .card .thumb .scrub { display: none; }
 body.tri-on .card .thumb .scrub {

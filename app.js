@@ -791,6 +791,8 @@ function makeCard(c) {
 
   const playIcon = document.createElement('div');
   playIcon.className = 'play-icon';
+  playIcon.title = 'Ouvrir le lecteur';
+  playIcon.addEventListener('click', (e) => { e.stopPropagation(); openModal(c.id); });
   thumb.appendChild(playIcon);
 
   // badge analyse
@@ -873,7 +875,10 @@ function makeCard(c) {
   setCardTriVisual(card, c);
   card.appendChild(makeTriPanel(c, card));
 
-  card.addEventListener('click', () => openModal(c.id));
+  card.addEventListener('click', (e) => {
+    if (state.triMode) handleSelectClick(c.id, e.shiftKey); // en mode tri, clic = sélection
+    else openModal(c.id);
+  });
 
   return card;
 }
