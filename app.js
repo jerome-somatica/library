@@ -76,6 +76,7 @@ const DEFAULT_FILTERS = {
   usage: '',     // '' | 'unused' | 'used'
   triHide: false, // mode tri : masquer les clips déjà triés
   triRefused: false, // mode tri : afficher uniquement les refusés
+  triBug: false, // mode tri : afficher uniquement les buggés
   emotions: [],  // multi
   tags: [],      // multi
   personsNames: [],  // multi (noms Apple)
@@ -468,7 +469,9 @@ function buildQuery() {
   // "Afficher les refusés" prime : on ne montre que les refusés.
   // Sinon "Masquer les déjà triées" : trié = Refusé, OU OK avec au moins 1 étoile ;
   // on garde visibles les pas-décidés et les OK sans étoile.
-  if (f.triRefused) {
+  if (f.triBug) {
+    q = q.eq('tri_status', 'bug');
+  } else if (f.triRefused) {
     q = q.eq('tri_status', 'refuse');
   } else if (f.triHide) {
     q = q.or('tri_status.eq.a_trier,and(tri_status.eq.ok,tri_rating.is.null),and(tri_status.eq.ok,tri_rating.eq.0)');
@@ -742,19 +745,27 @@ function makeCard(c) {
   scrub.addEventListener('change', endScrub);
 
   const preview = {
-    video: null,
-    pendingRatio: null,
+    video: null, canvas: null, ctx: null, raf: 0, pendingRatio: null,
+    _draw() {
+      const v = this.video, cv = this.canvas;
+      if (v && cv && v.videoWidth) {
+        if (cv.width !== v.videoWidth) { cv.width = v.videoWidth; cv.height = v.videoHeight; }
+        try { this.ctx.drawImage(v, 0, 0, cv.width, cv.height); } catch (e) {}
+      }
+      this.raf = requestAnimationFrame(() => this._draw());
+    },
     ensure() {
       if (activePreview && activePreview !== this) activePreview.stop(); // une seule à la fois
       activePreview = this;
       if (!this.video) {
+        // Vidéo cachée (décode + son) ; l'image est dessinée dans un canvas (rendu fiable, pas d'overlay matériel)
         const v = document.createElement('video');
         v.src = c.r2_url;
         v.playsInline = true;
         v.loop = true;
         v.muted = true;
         v.style.position = 'absolute';
-        v.style.inset = '0';
+        v.style.width = '1px'; v.style.height = '1px'; v.style.opacity = '0'; v.style.pointerEvents = 'none';
         v.addEventListener('timeupdate', () => {
           if (!scrubbing && v.duration) scrub.value = String(Math.round((v.currentTime / v.duration) * 1000));
         });
@@ -764,9 +775,13 @@ function makeCard(c) {
             if (Math.abs((v.currentTime / v.duration) - t) > 0.01) v.currentTime = t * v.duration;
           }
         });
+        const cv = document.createElement('canvas');
+        cv.className = 'preview-canvas';
         thumb.appendChild(v);
-        this.video = v;
+        thumb.appendChild(cv);
+        this.video = v; this.canvas = cv; this.ctx = cv.getContext('2d');
         thumb.classList.add('previewing');
+        if (!this.raf) this._draw();
       }
       return this.video;
     },
@@ -778,7 +793,6 @@ function makeCard(c) {
     },
     seek(ratio) {
       if (!clipPreviewable(c)) return;
-      // Pas de pause : si ça joue, la lecture continue. On n'empile pas les seeks.
       const v = this.ensure();
       const go = () => {
         if (!v.duration) return;
@@ -788,6 +802,7 @@ function makeCard(c) {
       if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true });
     },
     stop() {
+      if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; }
       if (this.video) {
         this.video.pause();
         this.video.removeAttribute('src');
@@ -795,6 +810,7 @@ function makeCard(c) {
         this.video.remove();
         this.video = null;
       }
+      if (this.canvas) { this.canvas.remove(); this.canvas = null; this.ctx = null; }
       this.pendingRatio = null;
       thumb.classList.remove('previewing');
       if (activePreview === this) activePreview = null;
@@ -1003,11 +1019,13 @@ function triHas(c, tag) { return Array.isArray(c.tri_tags) && c.tri_tags.include
 function setCardTriVisual(card, c) {
   card.classList.toggle('tri-ok', c.tri_status === 'ok');
   card.classList.toggle('tri-refuse', c.tri_status === 'refuse');
+  card.classList.toggle('tri-bug', c.tri_status === 'bug');
 }
+function triStatusLabel(s) { return s === 'ok' ? 'OK' : s === 'refuse' ? 'Refusé' : s === 'bug' ? 'Bug' : 'à trier'; }
 
 // Reflète localement la règle du trigger SQL vid_tri_sync (pour la pastille ✨ REEL)
 function recomputeUsable(c) {
-  c.usable_for_reel = !(c.tri_status === 'refuse' || triHas(c, 'nathalie_sol'));
+  c.usable_for_reel = !(c.tri_status === 'refuse' || c.tri_status === 'bug' || triHas(c, 'nathalie_sol'));
 }
 
 async function updateTri(c, card, patch) {
@@ -1049,8 +1067,8 @@ function setTriStatus(c, card, status) {
   }
   updateTriProgressDebounced();
   if (ids.length > 1) {
-    toast(`${ids.length} clips → ${status === 'ok' ? 'OK' : status === 'refuse' ? 'Refusé' : 'à trier'}`);
-    if (state.filters.triHide && !state.filters.triRefused) {
+    toast(`${ids.length} clips → ${triStatusLabel(status)}`);
+    if (state.filters.triHide && !state.filters.triRefused && !state.filters.triBug) {
       const remove = new Set(ids.filter(id => { const cc = state.clips.find(x => x.id === id); return cc && isTriaged(cc); }));
       if (remove.size) {
         state.clips = state.clips.filter(x => !remove.has(x.id));
@@ -1079,7 +1097,7 @@ function paintCardStars(card, n) {
 
 // "Trié" : Refusé tout court, OU OK avec une note écrite.
 function isTriaged(c) {
-  if (c.tri_status === 'refuse') return true;
+  if (c.tri_status === 'refuse' || c.tri_status === 'bug') return true;
   if (c.tri_status === 'ok') return (Number(c.tri_rating) || 0) > 0; // OK trié = au moins 1 étoile
   return false;
 }
@@ -1097,7 +1115,7 @@ function removeCardFromGrid(c, card) {
 }
 // Masque la vignette au fur et à mesure si le filtre "Masquer les déjà triées" est actif.
 function maybeHideTriaged(c, card) {
-  if (state.filters.triHide && !state.filters.triRefused && isTriaged(c) && card.isConnected) removeCardFromGrid(c, card);
+  if (state.filters.triHide && !state.filters.triRefused && !state.filters.triBug && isTriaged(c) && card.isConnected) removeCardFromGrid(c, card);
 }
 
 function makeTriPanel(c, card) {
@@ -1114,9 +1132,11 @@ function makeTriPanel(c, card) {
   const noB = document.createElement('button');
   noB.className = 'tri-status-btn refuse';
   noB.textContent = 'Refusé';
+  let bugB = null;
   const reflectStatus = () => {
     okB.classList.toggle('on', c.tri_status === 'ok');
     noB.classList.toggle('on', c.tri_status === 'refuse');
+    if (bugB) bugB.classList.toggle('on', c.tri_status === 'bug');
   };
   okB.addEventListener('click', () => { setTriStatus(c, card, c.tri_status === 'ok' ? 'a_trier' : 'ok'); reflectStatus(); });
   noB.addEventListener('click', () => { setTriStatus(c, card, c.tri_status === 'refuse' ? 'a_trier' : 'refuse'); reflectStatus(); });
@@ -1187,7 +1207,9 @@ function makeTriPanel(c, card) {
   p.appendChild(renderTriTagWrap(c, card, TRI_PRACTICES, 'g3'));
   p.appendChild(triDivider());
 
-  // Commentaire
+  // Commentaire + bouton Bug (à côté)
+  const rowC = document.createElement('div');
+  rowC.className = 'tri-comment-row';
   const note = document.createElement('input');
   note.className = 'tri-field tri-comment';
   note.type = 'text';
@@ -1207,7 +1229,16 @@ function makeTriPanel(c, card) {
   };
   note.addEventListener('change', saveNote);
   note.addEventListener('blur', saveNote);
-  p.appendChild(note);
+  bugB = document.createElement('button');
+  bugB.type = 'button';
+  bugB.className = 'tri-status-btn bug';
+  bugB.textContent = 'Bug';
+  bugB.title = 'Vidéo qui bugge, à reprendre après';
+  bugB.addEventListener('click', () => { setTriStatus(c, card, c.tri_status === 'bug' ? 'a_trier' : 'bug'); reflectStatus(); });
+  rowC.appendChild(note);
+  rowC.appendChild(bugB);
+  p.appendChild(rowC);
+  reflectStatus();
   p.appendChild(triDivider());
 
   // Validation
@@ -1226,8 +1257,8 @@ async function updateTriProgress() {
   if (!el) return;
   try {
     const head = (st) => sb.from('video_library').select('id', { count: 'exact', head: true }).eq('tri_status', st);
-    const [a, o, r] = await Promise.all([head('a_trier'), head('ok'), head('refuse')]);
-    el.textContent = `À trier : ${a.count ?? '?'} · OK : ${o.count ?? '?'} · Refusé : ${r.count ?? '?'}`;
+    const [a, o, r, b] = await Promise.all([head('a_trier'), head('ok'), head('refuse'), head('bug')]);
+    el.textContent = `À trier : ${a.count ?? '?'} · OK : ${o.count ?? '?'} · Refusé : ${r.count ?? '?'} · Bug : ${b.count ?? '?'}`;
   } catch (e) { /* silencieux */ }
 }
 
@@ -1267,6 +1298,8 @@ function syncFiltersToUI() {
   if (th) th.checked = !!f.triHide;
   const tr = document.getElementById('tri-refused-checkbox');
   if (tr) tr.checked = !!f.triRefused;
+  const tb = document.getElementById('tri-bug-checkbox');
+  if (tb) tb.checked = !!f.triBug;
 }
 
 searchInput.addEventListener('input', debounce(e => {
@@ -1341,6 +1374,7 @@ resetFiltersBtn.addEventListener('click', () => {
 const triModeBtn = $('tri-mode-btn');
 const triHideCheckbox = $('tri-hide-checkbox');
 const triRefusedCheckbox = $('tri-refused-checkbox');
+const triBugCheckbox = $('tri-bug-checkbox');
 triModeBtn && triModeBtn.addEventListener('click', () => setTriMode(!state.triMode));
 triHideCheckbox && triHideCheckbox.addEventListener('change', () => {
   state.filters.triHide = triHideCheckbox.checked;
@@ -1350,9 +1384,14 @@ triRefusedCheckbox && triRefusedCheckbox.addEventListener('change', () => {
   state.filters.triRefused = triRefusedCheckbox.checked;
   resetAndReload();
 });
+triBugCheckbox && triBugCheckbox.addEventListener('change', () => {
+  state.filters.triBug = triBugCheckbox.checked;
+  resetAndReload();
+});
 // Restaurer l'état du mode tri + les cases
 if (triHideCheckbox) triHideCheckbox.checked = !!state.filters.triHide;
 if (triRefusedCheckbox) triRefusedCheckbox.checked = !!state.filters.triRefused;
+if (triBugCheckbox) triBugCheckbox.checked = !!state.filters.triBug;
 buildBatchTriBar();
 setTriMode((() => { try { return localStorage.getItem('library_tri_mode') === '1'; } catch (e) { return false; } })());
 
@@ -1617,8 +1656,12 @@ function buildBatchTriBar() {
   const no = document.createElement('button');
   no.className = 'batch-btn refuse'; no.textContent = 'Refusé';
   no.addEventListener('click', () => applyBatchStatus('refuse'));
+  const bug = document.createElement('button');
+  bug.className = 'batch-btn bug'; bug.textContent = 'Bug';
+  bug.addEventListener('click', () => applyBatchStatus('bug'));
   host.appendChild(ok);
   host.appendChild(no);
+  host.appendChild(bug);
   const sep = document.createElement('span');
   sep.className = 'batch-sep'; sep.textContent = 'tags';
   host.appendChild(sep);
@@ -1636,9 +1679,9 @@ async function applyBatchStatus(status) {
   for (const id of ids) { const c = state.clips.find(x => x.id === id); if (c) { c.tri_status = status; recomputeUsable(c); } }
   const { error } = await sb.from('video_library').update({ tri_status: status }).in('id', ids);
   if (error) { console.error('applyBatchStatus', error); toast('Échec de la mise à jour', 'error'); return; }
-  toast(`${ids.length} clip(s) → ${status === 'ok' ? 'OK' : 'Refusé'}`);
+  toast(`${ids.length} clip(s) → ${triStatusLabel(status)}`);
   updateTriProgressDebounced();
-  if (state.filters.triHide && !state.filters.triRefused) {
+  if (state.filters.triHide && !state.filters.triRefused && !state.filters.triBug) {
     const remove = new Set(ids.filter(id => { const c = state.clips.find(x => x.id === id); return c && isTriaged(c); }));
     if (remove.size) {
       state.clips = state.clips.filter(c => !remove.has(c.id));
