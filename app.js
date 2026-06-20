@@ -1256,7 +1256,7 @@ async function updateTriProgress() {
   const el = document.getElementById('tri-progress');
   if (!el) return;
   try {
-    const head = (st) => sb.from('video_library').select('id', { count: 'exact', head: true }).eq('tri_status', st);
+    const head = (st) => sb.from('video_library').select('id', { count: 'exact', head: true }).eq('status', 'available').eq('tri_status', st);
     const [a, o, r, b] = await Promise.all([head('a_trier'), head('ok'), head('refuse'), head('bug')]);
     el.textContent = `À trier : ${a.count ?? '?'} · OK : ${o.count ?? '?'} · Refusé : ${r.count ?? '?'} · Bug : ${b.count ?? '?'}`;
   } catch (e) { /* silencieux */ }
