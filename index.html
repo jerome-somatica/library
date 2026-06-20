@@ -508,6 +508,8 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 .selection-bar .count { font-weight: 600; font-size: 16px; }
 .selection-bar .meta { opacity: 0.7; font-size: 13px; }
 .selection-bar .actions { margin-left: auto; display: flex; gap: 10px; }
+.selection-bar .btn.danger { border-color: #d98a8a; color: #ecb6b6; }
+.selection-bar .btn.danger:hover { background: rgba(217,138,138,0.18); }
 /* Actions groupées du mode tri (appliquer statut/tags à toute la sélection) */
 .batch-tri { display: none; gap: 5px; flex-wrap: wrap; align-items: center; }
 body.tri-on .selection-bar.active .batch-tri { display: flex; }
@@ -1886,6 +1888,7 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
   <div class="batch-tri" id="batch-tri"></div>
   <div class="actions">
     <button class="btn" id="clear-selection">Tout désélectionner</button>
+    <button class="btn danger" id="delete-dupes">Supprimer (doublon)</button>
     <button class="btn primary" id="send-to-edit">Envoyer vers SomaticaEdit</button>
   </div>
 </div>

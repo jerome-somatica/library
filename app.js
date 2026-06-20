@@ -39,7 +39,7 @@ const LIGHT_COLS = [
   'quality_score', 'persons_count', 'persons_detected',
   'music_present', 'has_speech', 'emotional_intensity', 'emotional_states',
   'usable_for_reel', 'location_name',
-  'tri_status', 'tri_rating', 'tri_note', 'tri_tags', 'tri_participante', 'codec',
+  'tri_status', 'tri_rating', 'tri_note', 'tri_tags', 'tri_participante', 'codec', 'content_hash',
 ].join(',');
 
 // Le navigateur sait-il décoder le HEVC/H.265 ? (Safari oui, Chrome souvent non)
@@ -1644,6 +1644,58 @@ clearSelectionBtn.addEventListener('click', () => {
 });
 
 sendToEditBtn.addEventListener('click', sendToSomaticaEdit);
+
+// ---------- SUPPRESSION MANUELLE DE DOUBLONS (+ liste noire d'empreintes) ----------
+const DELETE_R2_URL = 'https://zrdlvoovrnglxcgoyyeb.supabase.co/functions/v1/delete-from-r2';
+const DELETE_R2_TOKEN = 'somatica-r2-2026';
+
+async function deleteClipFull(c) {
+  // 1. Mémoriser l'empreinte pour bloquer un futur ré-import (si elle existe)
+  if (c.content_hash) {
+    const { error: be } = await sb.from('video_blocklist')
+      .upsert({ content_hash: c.content_hash, file_name: c.file_name || null, reason: 'doublon' }, { onConflict: 'content_hash' });
+    if (be) console.warn('blocklist', be);
+  }
+  // 2. Supprimer le fichier R2 (+ miniature) via l'Edge Function
+  const keys = [];
+  if (c.r2_key) keys.push(c.r2_key);
+  if (c.thumbnail_url) { try { const p = new URL(c.thumbnail_url).pathname.replace(/^\/+/, ''); if (p && !keys.includes(p)) keys.push(p); } catch (e) {} }
+  if (keys.length) {
+    try {
+      await fetch(DELETE_R2_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${DELETE_R2_TOKEN}` }, body: JSON.stringify({ keys }) });
+    } catch (e) { console.warn('R2 delete', e); }
+  }
+  // 3. Supprimer la ligne en base
+  const { error } = await sb.from('video_library').delete().eq('id', c.id);
+  if (error) throw error;
+}
+
+async function deleteSelectionAsDuplicates() {
+  const ids = [...state.selection];
+  if (!ids.length) { toast('Aucune sélection'); return; }
+  const noHash = ids.filter(id => { const c = state.clips.find(x => x.id === id); return c && !c.content_hash; }).length;
+  let msg = `Supprimer définitivement ${ids.length} vidéo(s) ?\nBase + fichier R2. L'empreinte est mémorisée pour bloquer un ré-import.`;
+  if (noHash) msg += `\n\n${noHash} n'ont pas encore d'empreinte (fais "Hash all" dans l'onglet Doublons avant, sinon elles pourront revenir).`;
+  if (!confirm(msg)) return;
+  let done = 0, fail = 0;
+  for (const id of ids) {
+    const c = state.clips.find(x => x.id === id);
+    if (!c) continue;
+    try {
+      await deleteClipFull(c);
+      const card = cardEl(id); if (card) card.remove();
+      const i = state.clips.findIndex(x => x.id === id); if (i >= 0) state.clips.splice(i, 1);
+      done++;
+    } catch (e) { console.error('delete clip', e); fail++; }
+  }
+  state.selection.clear(); lastSelIndex = null;
+  if (state.filteredCount != null) state.filteredCount = Math.max(0, state.filteredCount - done);
+  updateSelectionBar(); updateCounts(); renderGallery();
+  toast(`${done} supprimée(s)${fail ? ` · ${fail} échec(s)` : ''}`, fail ? 'error' : 'info');
+}
+
+const deleteDupesBtn = $('delete-dupes');
+deleteDupesBtn && deleteDupesBtn.addEventListener('click', deleteSelectionAsDuplicates);
 
 // ---------- ACTIONS GROUPÉES (mode tri) ----------
 function buildBatchTriBar() {
