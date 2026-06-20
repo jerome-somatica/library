@@ -1065,7 +1065,7 @@ function setTriStatus(c, card, status) {
     const cc = state.clips.find(x => x.id === id);
     if (cc) updateTri(cc, cardEl(id), { tri_status: status });
   }
-  updateTriProgressDebounced();
+  updateTriProgress();
   if (ids.length > 1) {
     toast(`${ids.length} clips → ${triStatusLabel(status)}`);
     if (state.filters.triHide && !state.filters.triRefused && !state.filters.triBug) {
@@ -1392,6 +1392,8 @@ triBugCheckbox && triBugCheckbox.addEventListener('change', () => {
 if (triHideCheckbox) triHideCheckbox.checked = !!state.filters.triHide;
 if (triRefusedCheckbox) triRefusedCheckbox.checked = !!state.filters.triRefused;
 if (triBugCheckbox) triBugCheckbox.checked = !!state.filters.triBug;
+const triProgressEl = document.getElementById('tri-progress');
+if (triProgressEl) { triProgressEl.title = 'Cliquer pour rafraîchir'; triProgressEl.addEventListener('click', updateTriProgress); }
 buildBatchTriBar();
 setTriMode((() => { try { return localStorage.getItem('library_tri_mode') === '1'; } catch (e) { return false; } })());
 
