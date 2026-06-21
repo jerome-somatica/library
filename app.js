@@ -93,6 +93,7 @@ const DEFAULT_FILTERS = {
   triParticipante: '', // filtre : participante
   triFacilitateur: '', // filtre photo : facilitateur (facil_*)
   triSalle: '',        // filtre photo : salle / lieu
+  triTagged: '',       // filtre photo : '' | 'untagged' (sans étiquette) | 'tagged'
   emotions: [],  // multi
   tags: [],      // multi
   personsNames: [],  // multi (noms Apple)
@@ -483,6 +484,12 @@ function buildImageQuery() {
   if (state.mediaType === 'photo') {
     if (f.triFacilitateur) q = q.contains('tri_tags', [f.triFacilitateur]);
     if (f.triSalle) q = q.ilike('tri_salle', `%${f.triSalle}%`);
+    // Sans étiquette : aucun tag (facilitateur/pratique), pas de participante, pas de salle
+    if (f.triTagged === 'untagged') {
+      q = q.is('tri_participante', null).is('tri_salle', null).or('tri_tags.is.null,tri_tags.eq.{}');
+    } else if (f.triTagged === 'tagged') {
+      q = q.or('tri_participante.not.is.null,tri_salle.not.is.null,tri_tags.neq.{}');
+    }
   }
   if (f.triBug) q = q.eq('tri_status', 'bug');
   else if (f.triRefused) q = q.eq('tri_status', 'refuse');
@@ -1638,6 +1645,7 @@ function syncFiltersToUI() {
   setSel('pf-pratique', f.triPratique || '');
   setSel('pf-salle', f.triSalle || '');
   setSel('pf-participante', f.triParticipante || '');
+  setSel('pf-tagged', f.triTagged || '');
 }
 
 searchInput.addEventListener('input', debounce(e => {
@@ -1707,6 +1715,7 @@ wireTriSel('pf-facil', 'triFacilitateur', false);
 wireTriSel('pf-pratique', 'triPratique', false);
 wireTriSel('pf-salle', 'triSalle', false);
 wireTriSel('pf-participante', 'triParticipante', false);
+wireTriSel('pf-tagged', 'triTagged', false);
 
 const mediaSwitch = document.getElementById('media-switch');
 if (mediaSwitch) mediaSwitch.addEventListener('click', (e) => { const b = e.target.closest('.media-btn'); if (b) setMediaType(b.dataset.media); });
