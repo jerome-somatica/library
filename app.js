@@ -656,6 +656,7 @@ function setMediaType(type) {
   updateSelectionBar();
   buildBatchTriBar();
   populateTriParticipanteSelect();
+  reloadColsForMode();
   loadFirstPage();
   if (state.triMode) updateTriProgress();
 }
@@ -2619,26 +2620,38 @@ async function sendToSomaticaEditPicker(ordered) {
   }
 }
 
-// ---------- ZOOM / DENSITÉ GRILLE ----------
-const zoomButtons = document.querySelectorAll('#zoom-control button');
-const COLS_MIN = 1, COLS_MAX = 4;
-const DEFAULT_COLS = window.innerWidth < 768 ? 2 : 3;
+// ---------- ZOOM / LARGEUR DE GRILLE (molette 1–16) ----------
+const colsRange = document.getElementById('cols-range');
+const colsValEl = document.getElementById('cols-val');
+// Max de colonnes selon le média : vidéo 8, photos / images IA 16
+const COLS_MAX_BY_MODE = { video: 8, photo: 16, image: 16 };
+function colsMax() { return COLS_MAX_BY_MODE[state.mediaType] || 8; }
+function colsStorageKey() { return state.mediaType === 'video' ? 'library_cols' : 'library_cols_img'; }
+function defaultColsForMode() {
+  if (state.mediaType === 'video') return window.innerWidth < 768 ? 2 : 3;
+  return window.innerWidth < 768 ? 4 : 6;
+}
 
 function applyCols(cols) {
-  cols = Math.max(COLS_MIN, Math.min(COLS_MAX, parseInt(cols) || DEFAULT_COLS));
+  cols = Math.max(1, Math.min(colsMax(), parseInt(cols) || defaultColsForMode()));
   document.documentElement.style.setProperty('--cols', cols);
-  gallery.dataset.dense = cols >= 4 ? '2' : (cols >= 3 ? '1' : '0');
-  zoomButtons.forEach(b => b.classList.toggle('active', parseInt(b.dataset.cols) === cols));
-  try { localStorage.setItem('library_cols', String(cols)); } catch (e) {}
+  gallery.dataset.dense = cols >= 5 ? '2' : (cols >= 3 ? '1' : '0');
+  if (colsRange) { colsRange.max = String(colsMax()); colsRange.value = String(cols); }
+  if (colsValEl) colsValEl.textContent = String(cols);
+  try { localStorage.setItem(colsStorageKey(), String(cols)); } catch (e) {}
   state.cols = cols;
   return cols;
 }
 
-state.cols = applyCols(parseInt(localStorage.getItem('library_cols')) || DEFAULT_COLS);
+// Recharge la largeur mémorisée pour le média courant (appelé au changement de média)
+function reloadColsForMode() {
+  if (colsRange) colsRange.max = String(colsMax());
+  applyCols(parseInt(localStorage.getItem(colsStorageKey())) || defaultColsForMode());
+}
 
-zoomButtons.forEach(btn => {
-  btn.addEventListener('click', () => applyCols(btn.dataset.cols));
-});
+state.cols = applyCols(parseInt(localStorage.getItem(colsStorageKey())) || defaultColsForMode());
+
+if (colsRange) colsRange.addEventListener('input', () => applyCols(colsRange.value));
 
 // Pinch-to-zoom mobile
 let pinchStart = null;

@@ -187,21 +187,32 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
 }
 .btn-reset:hover { color: #ebd3a0; border-color: #ebd3a0; border-style: solid; }
 
-/* Zoom control (segmented buttons) */
+/* Zoom control (molette largeur de grille) */
 .zoom-control {
-  display: inline-flex; gap: 2px;
+  display: inline-flex; align-items: center; gap: 8px;
   background: rgba(235,211,160,0.08);
   border: 1px solid rgba(235,211,160,0.12);
-  border-radius: 8px; padding: 2px;
+  border-radius: 8px; padding: 4px 10px;
 }
-.zoom-control button {
-  background: transparent; border: 0; color: rgba(235,211,160,0.55);
-  padding: 5px 9px; font-size: 12px; font-weight: 600;
-  font-family: inherit; border-radius: 6px; cursor: pointer;
-  min-width: 30px; transition: background 0.12s, color 0.12s;
+.zoom-control input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 120px; height: 4px; border-radius: 999px;
+  background: rgba(235,211,160,0.25); cursor: pointer; margin: 0;
 }
-.zoom-control button.active { background: rgba(235,211,160,0.22); color: #ebd3a0; }
-.zoom-control button:active { transform: scale(0.95); }
+.zoom-control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: #ebd3a0; border: 0; cursor: pointer;
+}
+.zoom-control input[type="range"]::-moz-range-thumb {
+  width: 15px; height: 15px; border-radius: 50%;
+  background: #ebd3a0; border: 0; cursor: pointer;
+}
+.zoom-control .cols-val {
+  color: #ebd3a0; font-size: 12px; font-weight: 700;
+  min-width: 16px; text-align: center; font-variant-numeric: tabular-nums;
+}
+@media (max-width: 767px) { .zoom-control input[type="range"] { width: 90px; } }
 
 /* Gallery grid — piloté par --cols */
 :root { --cols: 3; --gap: 12px; }
@@ -1506,11 +1517,9 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
     <!-- Ligne 4 : compteur + zoom -->
     <div class="filters-bottom">
       <span class="count-filtered" id="filtered-count"></span>
-      <div class="zoom-control" id="zoom-control" aria-label="Densité de la grille" style="margin-left:auto">
-        <button data-cols="1" title="1 colonne">1</button>
-        <button data-cols="2" title="2 colonnes">2</button>
-        <button data-cols="3" title="3 colonnes">3</button>
-        <button data-cols="4" title="4 colonnes">4</button>
+      <div class="zoom-control" id="zoom-control" aria-label="Largeur de la grille" style="margin-left:auto">
+        <input type="range" id="cols-range" min="1" max="16" step="1" value="3" aria-label="Nombre de colonnes">
+        <span class="cols-val" id="cols-val">3</span>
       </div>
     </div>
   </div>
