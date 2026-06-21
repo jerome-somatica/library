@@ -1656,6 +1656,8 @@ triBugCheckbox && triBugCheckbox.addEventListener('change', () => {
   state.filters.triBug = triBugCheckbox.checked;
   resetAndReload();
 });
+const selectAllBtn = $('select-all-visible');
+selectAllBtn && selectAllBtn.addEventListener('click', selectAllVisible);
 // Restaurer l'état du mode tri + les cases
 if (triHideCheckbox) triHideCheckbox.checked = !!state.filters.triHide;
 if (triRefusedCheckbox) triRefusedCheckbox.checked = !!state.filters.triRefused;
@@ -1995,11 +1997,48 @@ function buildBatchTriBar() {
     host.appendChild(sep);
     for (const [val, label] of batchTags) {
       const b = document.createElement('button');
-      b.className = 'batch-btn tag'; b.textContent = label;
+      b.className = 'batch-btn tag' + (val.startsWith('facil_') ? ' facil' : '');
+      b.textContent = label;
       b.addEventListener('click', () => applyBatchTag(val));
       host.appendChild(b);
     }
   }
+  // Participante commune (photos) : nomme toute la sélection d'un coup
+  if (MEDIA[state.mediaType] && MEDIA[state.mediaType].participante) {
+    const psep = document.createElement('span');
+    psep.className = 'batch-sep'; psep.textContent = 'participante';
+    host.appendChild(psep);
+    const pin = document.createElement('input');
+    pin.className = 'batch-part';
+    pin.type = 'text'; pin.placeholder = 'nom pour la sélection…';
+    pin.setAttribute('list', 'participantes-list');
+    pin.addEventListener('change', () => applyBatchParticipante(pin.value.trim()));
+    host.appendChild(pin);
+  }
+}
+
+async function applyBatchParticipante(v) {
+  const ids = [...state.selection];
+  if (!ids.length) { toast('Aucune sélection'); return; }
+  for (const id of ids) { const c = state.clips.find(x => x.id === id); if (c) c.tri_participante = v || null; }
+  const { error } = await sb.from(mediaTable()).update({ tri_participante: v || null }).in('id', ids);
+  if (error) { console.error('applyBatchParticipante', error); toast('Échec', 'error'); return; }
+  harvestParticipantes(v);
+  toast(`${ids.length} → ${v || 'sans participante'}`);
+}
+
+// Sélectionne toutes les vignettes actuellement chargées (pour taguer en lot)
+function selectAllVisible() {
+  if (!state.triMode) { toast('Active le mode tri'); return; }
+  for (const c of state.clips) state.selection.add(c.id);
+  document.querySelectorAll('.gallery .card').forEach(el => {
+    el.classList.add('selected');
+    const cb = el.querySelector('.select-checkbox');
+    if (cb) cb.textContent = '✓';
+  });
+  lastSelIndex = null;
+  updateSelectionBar();
+  toast(`${state.selection.size} sélectionné(s)`);
 }
 
 async function applyBatchStatus(status) {
@@ -2636,6 +2675,8 @@ function applyCols(cols) {
   cols = Math.max(1, Math.min(colsMax(), parseInt(cols) || defaultColsForMode()));
   document.documentElement.style.setProperty('--cols', cols);
   gallery.dataset.dense = cols >= 5 ? '2' : (cols >= 3 ? '1' : '0');
+  // Au-delà de 4 colonnes : vignettes nues + tag/nom communs dans la barre du bas
+  document.body.classList.toggle('tri-dense', cols > 4);
   if (colsRange) { colsRange.max = String(colsMax()); colsRange.value = String(cols); }
   if (colsValEl) colsValEl.textContent = String(cols);
   try { localStorage.setItem(colsStorageKey(), String(cols)); } catch (e) {}

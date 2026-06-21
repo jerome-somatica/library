@@ -359,6 +359,9 @@ body.tri-on .card .tri-panel {
   border-top: 1px solid rgba(235,211,160,0.15);
   background: #0c2630;
 }
+/* Grille dense (plus de 4 colonnes) : vignettes nues, on tague via la barre du bas commune */
+body.tri-on.tri-dense .card .tri-panel { display: none; }
+body.tri-on.tri-dense .card { cursor: pointer; }
 body.tri-on .card.tri-ok { border-color: #7fc77f; box-shadow: 0 0 0 2px rgba(127,199,127,0.4); }
 body.tri-on .card.tri-refuse { border-color: #d98a8a; opacity: 0.5; }
 body.tri-on .card.tri-bug { border-color: #e0b070; box-shadow: 0 0 0 2px rgba(224,176,112,0.4); }
@@ -537,6 +540,20 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
 .batch-btn.ok { border-color: #7fc77f; color: #b6e3b6; }
 .batch-btn.refuse { border-color: #d98a8a; color: #ecb6b6; }
 .batch-btn.bug { border-color: #e0b070; color: #e8c89a; }
+.batch-btn.tag.facil { border-color: #d8b6d6; color: #e6c8e4; }
+.batch-part {
+  padding: 4px 9px; border-radius: 6px; border: 1px solid rgba(235,211,160,0.3);
+  background: rgba(235,211,160,0.06); color: #ebd3a0; font-size: 11px;
+  font-family: inherit; min-width: 120px;
+}
+.batch-part::placeholder { color: rgba(235,211,160,0.4); }
+/* Bouton "tout sélectionner l'affiché" dans la tri-bar */
+.tri-selectall {
+  padding: 4px 11px; border-radius: 6px; border: 1px solid rgba(235,211,160,0.32);
+  background: transparent; color: #ebd3a0; font-size: 12px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+}
+.tri-selectall:hover { background: rgba(235,211,160,0.1); }
 
 /* Loading */
 .loading {
@@ -1494,6 +1511,7 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
       <label class="tri-hide">
         <input type="checkbox" id="tri-bug-checkbox"> Afficher seulement les buggés
       </label>
+      <button type="button" class="tri-selectall" id="select-all-visible" title="Sélectionner toutes les vignettes affichées pour les taguer en lot">Tout sélectionner l'affiché</button>
       <span class="tri-progress" id="tri-progress"></span>
     </div>
 
@@ -1954,7 +1972,7 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
 
 <div class="selection-bar" id="selection-bar">
   <div>
-    <div class="count"><span id="sel-count">0</span> clips sélectionnés</div>
+    <div class="count"><span id="sel-count">0</span> sélectionné(s)</div>
     <div class="meta" id="sel-meta">0 sec au total</div>
   </div>
   <div class="batch-tri" id="batch-tri"></div>
@@ -1981,7 +1999,7 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <datalist id="participantes-list"></datalist>
-<script src="app.js?v=20260621b"></script>
-<script src="admin.js?v=20260621b"></script>
+<script src="app.js?v=20260621c"></script>
+<script src="admin.js?v=20260621c"></script>
 </body>
 </html>
