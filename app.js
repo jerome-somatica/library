@@ -88,9 +88,11 @@ const DEFAULT_FILTERS = {
   triBug: false, // mode tri : afficher uniquement les buggés
   triStatus: '',       // filtre drawer : statut de tri
   triRatingMin: 0,     // filtre drawer : note minimale
-  triPratique: '',     // filtre drawer : tag pratique
+  triPratique: '',     // filtre : tag pratique
   triContexte: '',     // filtre drawer : tag contexte / cas
-  triParticipante: '', // filtre drawer : participante
+  triParticipante: '', // filtre : participante
+  triFacilitateur: '', // filtre photo : facilitateur (facil_*)
+  triSalle: '',        // filtre photo : salle / lieu
   emotions: [],  // multi
   tags: [],      // multi
   personsNames: [],  // multi (noms Apple)
@@ -468,7 +470,7 @@ document.addEventListener('click', (e) => {
 // ===================== FLUX PHOTO / IMAGES IA =====================
 function imageCols() {
   return state.mediaType === 'photo'
-    ? 'id,r2_url,r2_key,filename,subject,category,ambiance,tags,quality_score,status,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante'
+    ? 'id,r2_url,r2_key,filename,subject,category,ambiance,tags,quality_score,status,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante,tri_salle'
     : 'id,r2_url,r2_key,prompt,model,source,tags,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante';
 }
 function buildImageQuery() {
@@ -477,6 +479,11 @@ function buildImageQuery() {
   if (f.triStatus) q = q.eq('tri_status', f.triStatus);
   if (f.triRatingMin > 0) q = q.gte('tri_rating', f.triRatingMin);
   if (f.triParticipante) q = q.ilike('tri_participante', `%${f.triParticipante}%`);
+  if (f.triPratique) q = q.contains('tri_tags', [f.triPratique]);
+  if (state.mediaType === 'photo') {
+    if (f.triFacilitateur) q = q.contains('tri_tags', [f.triFacilitateur]);
+    if (f.triSalle) q = q.ilike('tri_salle', `%${f.triSalle}%`);
+  }
   if (f.triBug) q = q.eq('tri_status', 'bug');
   else if (f.triRefused) q = q.eq('tri_status', 'refuse');
   else if (f.triHide) q = q.eq('tri_status', 'a_trier');
@@ -594,10 +601,29 @@ function makeImageTriPanel(c, card) {
   }
   p.appendChild(rowR);
   p.appendChild(triDivider());
-  // Tags (photos uniquement) : facilitateur (exclusif) + pratiques
+  // Tags (photos uniquement) : facilitateur (exclusif) + pratiques + salle
   if (state.mediaType === 'photo') {
     p.appendChild(renderTriTagWrap(c, card, TRI_FACILITATEUR, 'g4', true));
     p.appendChild(renderTriTagWrap(c, card, TRI_PRACTICES, 'g3'));
+    const salle = document.createElement('input');
+    salle.className = 'tri-field tri-salle';
+    salle.type = 'text'; salle.placeholder = 'salle / lieu…';
+    salle.setAttribute('list', 'salles-list');
+    salle.value = c.tri_salle || '';
+    const saveSalle = () => {
+      const v = salle.value.trim();
+      const ids = triTargets(c);
+      for (const id of ids) {
+        const cc = state.clips.find(x => x.id === id);
+        if (!cc) continue;
+        if ((cc.tri_salle || '') !== v) updateTri(cc, cardEl(id), { tri_salle: v || null });
+        if (id !== c.id) { const el = cardEl(id); const inp = el && el.querySelector('.tri-salle'); if (inp) inp.value = v; }
+      }
+      harvestSalles(v);
+    };
+    salle.addEventListener('change', saveSalle);
+    salle.addEventListener('blur', saveSalle);
+    p.appendChild(salle);
     p.appendChild(triDivider());
   }
   // Commentaire
@@ -651,11 +677,14 @@ function setMediaType(type) {
   state.mediaType = type;
   document.querySelectorAll('#media-switch .media-btn').forEach(b => b.classList.toggle('active', b.dataset.media === type));
   document.body.classList.toggle('media-non-video', type !== 'video');
+  document.body.dataset.media = type;
   state.selection.clear();
   lastSelIndex = null;
   updateSelectionBar();
   buildBatchTriBar();
   populateTriParticipanteSelect();
+  if (type === 'photo') loadPhotoCatalog();
+  syncFiltersToUI();
   reloadColsForMode();
   loadFirstPage();
   if (state.triMode) updateTriProgress();
@@ -1249,18 +1278,65 @@ function populateParticipantesDatalist() {
   dl.innerHTML = names.map(n => `<option value="${escapeAttr(n)}"></option>`).join('');
 }
 function populateTriParticipanteSelect() {
-  const el = document.getElementById('tri-participante-filter');
-  if (!el) return;
-  const cur = el.value;
   const names = [...(state.catalog.participantes || [])].sort((a, b) => a.localeCompare(b));
-  el.innerHTML = '<option value="">Toutes</option>' + names.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('');
-  el.value = cur;
+  const opts = '<option value="">Toutes</option>' + names.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('');
+  for (const id of ['tri-participante-filter', 'pf-participante']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const cur = el.value;
+    el.innerHTML = opts;
+    el.value = cur;
+  }
 }
 function harvestParticipantes(v) {
   if (!v) return;
   if (!state.catalog.participantes) state.catalog.participantes = new Set();
   v.split(/[,;&]/).forEach(s => { const t = s.trim(); if (t) state.catalog.participantes.add(t); });
   populateParticipantesDatalist();
+  populateTriParticipanteSelect();
+}
+// ----- Salles / lieux (photos) : autocomplétion + filtre -----
+function populateSallesDatalist() {
+  const dl = document.getElementById('salles-list');
+  if (!dl) return;
+  const names = [...(state.catalog.salles || [])].sort((a, b) => a.localeCompare(b));
+  dl.innerHTML = names.map(n => `<option value="${escapeAttr(n)}"></option>`).join('');
+}
+function populateSalleSelect() {
+  const el = document.getElementById('pf-salle');
+  if (!el) return;
+  const cur = el.value;
+  const names = [...(state.catalog.salles || [])].sort((a, b) => a.localeCompare(b));
+  el.innerHTML = '<option value="">Toutes salles</option>' + names.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('');
+  el.value = cur;
+}
+function harvestSalles(v) {
+  if (!v) return;
+  if (!state.catalog.salles) state.catalog.salles = new Set();
+  v.split(/[,;&]/).forEach(s => { const t = s.trim(); if (t) state.catalog.salles.add(t); });
+  populateSallesDatalist();
+  populateSalleSelect();
+}
+// Charge les salles + participantes déjà saisies sur les photos (image_library)
+let _photoCatalogLoaded = false;
+async function loadPhotoCatalog(force) {
+  if (_photoCatalogLoaded && !force) return;
+  _photoCatalogLoaded = true;
+  try {
+    const { data, error } = await sb.from('image_library').select('tri_salle,tri_participante').limit(3000);
+    if (error) { _photoCatalogLoaded = false; return; }
+    const salles = new Set();
+    if (!state.catalog.participantes) state.catalog.participantes = new Set();
+    for (const r of data || []) {
+      if (r.tri_salle) String(r.tri_salle).split(/[,;&]/).forEach(s => { const t = s.trim(); if (t) salles.add(t); });
+      if (r.tri_participante) String(r.tri_participante).split(/[,;&]/).forEach(s => { const t = s.trim(); if (t) state.catalog.participantes.add(t); });
+    }
+    state.catalog.salles = salles;
+    populateSallesDatalist();
+    populateSalleSelect();
+    populateParticipantesDatalist();
+    populateTriParticipanteSelect();
+  } catch (e) { _photoCatalogLoaded = false; }
 }
 
 function triHas(c, tag) { return Array.isArray(c.tri_tags) && c.tri_tags.includes(tag); }
@@ -1555,6 +1631,13 @@ function syncFiltersToUI() {
   setSel('tri-pratique-filter', f.triPratique || '');
   setSel('tri-contexte-filter', f.triContexte || '');
   setSel('tri-participante-filter', f.triParticipante || '');
+  // Filtres photos en haut
+  setSel('pf-status', f.triStatus || '');
+  setSel('pf-rating', String(f.triRatingMin || 0));
+  setSel('pf-facil', f.triFacilitateur || '');
+  setSel('pf-pratique', f.triPratique || '');
+  setSel('pf-salle', f.triSalle || '');
+  setSel('pf-participante', f.triParticipante || '');
 }
 
 searchInput.addEventListener('input', debounce(e => {
@@ -1617,9 +1700,17 @@ wireTriSel('tri-rating-filter', 'triRatingMin', true);
 wireTriSel('tri-pratique-filter', 'triPratique', false);
 wireTriSel('tri-contexte-filter', 'triContexte', false);
 wireTriSel('tri-participante-filter', 'triParticipante', false);
+// Filtres photos en haut (mêmes clés de state.filters)
+wireTriSel('pf-status', 'triStatus', false);
+wireTriSel('pf-rating', 'triRatingMin', true);
+wireTriSel('pf-facil', 'triFacilitateur', false);
+wireTriSel('pf-pratique', 'triPratique', false);
+wireTriSel('pf-salle', 'triSalle', false);
+wireTriSel('pf-participante', 'triParticipante', false);
 
 const mediaSwitch = document.getElementById('media-switch');
 if (mediaSwitch) mediaSwitch.addEventListener('click', (e) => { const b = e.target.closest('.media-btn'); if (b) setMediaType(b.dataset.media); });
+document.body.dataset.media = state.mediaType || 'video';
 
 resetFiltersBtn.addEventListener('click', () => {
   state.filters = {
@@ -2015,6 +2106,28 @@ function buildBatchTriBar() {
     pin.addEventListener('change', () => applyBatchParticipante(pin.value.trim()));
     host.appendChild(pin);
   }
+  // Salle commune (photos)
+  if (state.mediaType === 'photo') {
+    const ssep = document.createElement('span');
+    ssep.className = 'batch-sep'; ssep.textContent = 'salle';
+    host.appendChild(ssep);
+    const sin = document.createElement('input');
+    sin.className = 'batch-part';
+    sin.type = 'text'; sin.placeholder = 'salle pour la sélection…';
+    sin.setAttribute('list', 'salles-list');
+    sin.addEventListener('change', () => applyBatchSalle(sin.value.trim()));
+    host.appendChild(sin);
+  }
+}
+
+async function applyBatchSalle(v) {
+  const ids = [...state.selection];
+  if (!ids.length) { toast('Aucune sélection'); return; }
+  for (const id of ids) { const c = state.clips.find(x => x.id === id); if (c) c.tri_salle = v || null; }
+  const { error } = await sb.from(mediaTable()).update({ tri_salle: v || null }).in('id', ids);
+  if (error) { console.error('applyBatchSalle', error); toast('Échec', 'error'); return; }
+  harvestSalles(v);
+  toast(`${ids.length} → ${v || 'sans salle'}`);
 }
 
 async function applyBatchParticipante(v) {

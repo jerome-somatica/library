@@ -620,6 +620,17 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
 }
 .presets-row::-webkit-scrollbar { height: 4px; }
 .presets-row::-webkit-scrollbar-thumb { background: rgba(235,211,160,0.2); border-radius: 2px; }
+/* Filtres adaptés aux photos / images (affichés en mode non-vidéo à la place des presets Reel) */
+.photo-filters-row {
+  display: none; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 6px 20px 8px 20px; overflow-x: auto;
+  border-top: 1px dashed rgba(235, 211, 160, 0.08);
+}
+.photo-filters-row select { font-size: 12px; padding: 5px 8px; }
+body.media-non-video #presets-row { display: none; }
+body.media-non-video #photo-filters-row { display: flex; }
+body[data-media="image"] .photo-only { display: none; }
+@media (max-width: 767px) { .photo-filters-row { padding: 6px 14px 8px 14px; } }
 .preset {
   display: inline-flex; align-items: center; gap: 5px;
   background: transparent;
@@ -1527,6 +1538,43 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
       <button class="preset" data-preset="with_location">📍 Avec lieu</button>
     </div>
 
+    <!-- Ligne 2 bis : filtres adaptés photos / images (mode non-vidéo) -->
+    <div class="photo-filters-row" id="photo-filters-row">
+      <select id="pf-status" title="Statut de tri">
+        <option value="">Tous statuts</option>
+        <option value="a_trier">À trier</option>
+        <option value="ok">OK</option>
+        <option value="refuse">Refusé</option>
+        <option value="bug">Bug</option>
+      </select>
+      <select id="pf-rating" title="Note minimale">
+        <option value="0">Toutes notes</option>
+        <option value="1">★ ≥ 1</option>
+        <option value="3">★ ≥ 3</option>
+        <option value="5">★ ≥ 5</option>
+        <option value="7">★ ≥ 7</option>
+      </select>
+      <select id="pf-facil" class="photo-only" title="Facilitateur">
+        <option value="">Tous facilitateurs</option>
+        <option value="facil_jerome">Jérôme</option>
+        <option value="facil_nath">Nath</option>
+        <option value="facil_duo">Les deux</option>
+      </select>
+      <select id="pf-pratique" title="Pratique">
+        <option value="">Toutes pratiques</option>
+        <option value="innerdance">Innerdance</option>
+        <option value="breathwork">Breathwork</option>
+        <option value="qi_cleansing">Qi cleansing</option>
+        <option value="cacao">Cacao</option>
+      </select>
+      <select id="pf-salle" class="photo-only" title="Salle / lieu">
+        <option value="">Toutes salles</option>
+      </select>
+      <select id="pf-participante" class="photo-only" title="Participante">
+        <option value="">Toutes</option>
+      </select>
+    </div>
+
     <!-- Ligne 3 : filtres actifs (chips) -->
     <div class="active-chips-row" id="active-chips-row">
       <!-- généré dynamiquement par JS -->
@@ -1999,7 +2047,8 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <datalist id="participantes-list"></datalist>
-<script src="app.js?v=20260621c"></script>
-<script src="admin.js?v=20260621c"></script>
+<datalist id="salles-list"></datalist>
+<script src="app.js?v=20260621d"></script>
+<script src="admin.js?v=20260621d"></script>
 </body>
 </html>
