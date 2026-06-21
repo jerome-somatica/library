@@ -2623,9 +2623,9 @@ async function sendToSomaticaEditPicker(ordered) {
 // ---------- ZOOM / LARGEUR DE GRILLE (molette 1–16) ----------
 const colsRange = document.getElementById('cols-range');
 const colsValEl = document.getElementById('cols-val');
-// Max de colonnes selon le média : vidéo 8, photos / images IA 16
-const COLS_MAX_BY_MODE = { video: 8, photo: 16, image: 16 };
-function colsMax() { return COLS_MAX_BY_MODE[state.mediaType] || 8; }
+// Max de colonnes selon le média : vidéo 4, photos / images IA 16
+const COLS_MAX_BY_MODE = { video: 4, photo: 16, image: 16 };
+function colsMax() { return COLS_MAX_BY_MODE[state.mediaType] || 4; }
 function colsStorageKey() { return state.mediaType === 'video' ? 'library_cols' : 'library_cols_img'; }
 function defaultColsForMode() {
   if (state.mediaType === 'video') return window.innerWidth < 768 ? 2 : 3;
