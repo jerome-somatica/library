@@ -479,17 +479,18 @@ function buildImageQuery() {
   const f = state.filters;
   if (f.triStatus) q = q.eq('tri_status', f.triStatus);
   if (f.triRatingMin > 0) q = q.gte('tri_rating', f.triRatingMin);
-  if (f.triParticipante) q = q.ilike('tri_participante', `%${f.triParticipante}%`);
-  if (f.triPratique) q = q.contains('tri_tags', [f.triPratique]);
+  if (f.triParticipante === '__none__') q = q.is('tri_participante', null);
+  else if (f.triParticipante) q = q.ilike('tri_participante', `%${f.triParticipante}%`);
+  if (f.triPratique === '__none__') q = q.not('tri_tags', 'ov', '{innerdance,breathwork,qi_cleansing,cacao}');
+  else if (f.triPratique) q = q.contains('tri_tags', [f.triPratique]);
   if (state.mediaType === 'photo') {
-    if (f.triFacilitateur) q = q.contains('tri_tags', [f.triFacilitateur]);
-    if (f.triSalle) q = q.ilike('tri_salle', `%${f.triSalle}%`);
-    // Sans étiquette : aucun tag (facilitateur/pratique), pas de participante, pas de salle
-    if (f.triTagged === 'untagged') {
-      q = q.is('tri_participante', null).is('tri_salle', null).or('tri_tags.is.null,tri_tags.eq.{}');
-    } else if (f.triTagged === 'tagged') {
-      q = q.or('tri_participante.not.is.null,tri_salle.not.is.null,tri_tags.neq.{}');
-    }
+    if (f.triFacilitateur === '__none__') q = q.not('tri_tags', 'ov', '{facil_jerome,facil_nath,facil_duo}');
+    else if (f.triFacilitateur) q = q.contains('tri_tags', [f.triFacilitateur]);
+    if (f.triSalle === '__none__') q = q.is('tri_salle', null);
+    else if (f.triSalle) q = q.ilike('tri_salle', `%${f.triSalle}%`);
+    // Sans étiquette : aucun tag, pas de participante, pas de salle (tri_tags normalisé en '{}')
+    if (f.triTagged === 'untagged') q = q.is('tri_participante', null).is('tri_salle', null).eq('tri_tags', '{}');
+    else if (f.triTagged === 'tagged') q = q.or('tri_participante.not.is.null,tri_salle.not.is.null,tri_tags.neq.{}');
   }
   if (f.triBug) q = q.eq('tri_status', 'bug');
   else if (f.triRefused) q = q.eq('tri_status', 'refuse');
@@ -522,6 +523,9 @@ function makeImageCard(c) {
   cb.textContent = state.selection.has(c.id) ? '✓' : '';
   cb.addEventListener('click', e => { e.stopPropagation(); handleSelectClick(c.id, e.shiftKey); });
   thumb.appendChild(cb);
+  const tagOv = document.createElement('div');
+  tagOv.className = 'card-tags';
+  thumb.appendChild(tagOv);
   card.appendChild(thumb);
   const info = document.createElement('div');
   info.className = 'info';
@@ -531,6 +535,7 @@ function makeImageCard(c) {
   info.appendChild(amb);
   card.appendChild(info);
   setCardTriVisual(card, c);
+  paintCardTagOverlay(card, c);
   card.appendChild(makeImageTriPanel(c, card));
   card.addEventListener('click', (e) => {
     if (state.triMode) handleSelectClick(c.id, e.shiftKey);
@@ -601,6 +606,7 @@ function makeImageTriPanel(c, card) {
         if (id !== c.id) { const el = cardEl(id); const inp = el && el.querySelector('.tri-participante'); if (inp) inp.value = v; }
       }
       harvestParticipantes(v);
+      if (ids.length > 1) { applyLiveFilterHide(ids, 'sync'); renderGallery(); } else applyLiveFilterHide(ids);
     };
     part.addEventListener('change', savePart);
     part.addEventListener('blur', savePart);
@@ -627,6 +633,7 @@ function makeImageTriPanel(c, card) {
         if (id !== c.id) { const el = cardEl(id); const inp = el && el.querySelector('.tri-salle'); if (inp) inp.value = v; }
       }
       harvestSalles(v);
+      if (ids.length > 1) { applyLiveFilterHide(ids, 'sync'); renderGallery(); } else applyLiveFilterHide(ids);
     };
     salle.addEventListener('change', saveSalle);
     salle.addEventListener('blur', saveSalle);
@@ -729,9 +736,10 @@ function buildQuery() {
   // Filtres "Mon tri" (drawer)
   if (f.triStatus) q = q.eq('tri_status', f.triStatus);
   if (f.triRatingMin > 0) q = q.gte('tri_rating', f.triRatingMin);
-  if (f.triPratique) q = q.contains('tri_tags', [f.triPratique]);
+  if (f.triPratique && f.triPratique !== '__none__') q = q.contains('tri_tags', [f.triPratique]);
   if (f.triContexte) q = q.contains('tri_tags', [f.triContexte]);
-  if (f.triParticipante) q = q.ilike('tri_participante', `%${f.triParticipante}%`);
+  if (f.triParticipante === '__none__') q = q.is('tri_participante', null);
+  else if (f.triParticipante) q = q.ilike('tri_participante', `%${f.triParticipante}%`);
 
   if (f.persons === '0') q = q.eq('persons_count', 0);
   else if (f.persons === '1') q = q.eq('persons_count', 1);
@@ -1286,7 +1294,7 @@ function populateParticipantesDatalist() {
 }
 function populateTriParticipanteSelect() {
   const names = [...(state.catalog.participantes || [])].sort((a, b) => a.localeCompare(b));
-  const opts = '<option value="">Toutes</option>' + names.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('');
+  const opts = '<option value="">Toutes</option><option value="__none__">Sans participante</option>' + names.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('');
   for (const id of ['tri-participante-filter', 'pf-participante']) {
     const el = document.getElementById(id);
     if (!el) continue;
@@ -1314,7 +1322,7 @@ function populateSalleSelect() {
   if (!el) return;
   const cur = el.value;
   const names = [...(state.catalog.salles || [])].sort((a, b) => a.localeCompare(b));
-  el.innerHTML = '<option value="">Toutes salles</option>' + names.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('');
+  el.innerHTML = '<option value="">Toutes salles</option><option value="__none__">Sans salle</option>' + names.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('');
   el.value = cur;
 }
 function harvestSalles(v) {
@@ -1360,10 +1368,71 @@ function recomputeUsable(c) {
   c.usable_for_reel = !(c.tri_status === 'refuse' || c.tri_status === 'bug' || triHas(c, 'nathalie_sol'));
 }
 
+// Valeurs de tags par dimension (photos) + libellés courts pour l'overlay vignette
+const FACIL_VALUES = ['facil_jerome', 'facil_nath', 'facil_duo'];
+const PRATIQUE_VALUES = ['innerdance', 'breathwork', 'qi_cleansing', 'cacao'];
+const TAG_SHORT = { facil_jerome: 'Jérôme', facil_nath: 'Nath', facil_duo: 'Les deux', innerdance: 'Inner', breathwork: 'Breath', qi_cleansing: 'Qi', cacao: 'Cacao' };
+const TAG_CLASS = { facil_jerome: 'ct-facil', facil_nath: 'ct-facil', facil_duo: 'ct-facil', innerdance: 'ct-prat', breathwork: 'ct-prat', qi_cleansing: 'ct-prat', cacao: 'ct-prat' };
+function hasAnyTag(c, arr) { return Array.isArray(c.tri_tags) && c.tri_tags.some(t => arr.includes(t)); }
+function isPhotoTagged(c) { return (Array.isArray(c.tri_tags) && c.tri_tags.length > 0) || !!c.tri_participante || !!c.tri_salle; }
+
+// La carte (photo/image) correspond-elle encore aux filtres actifs ? (miroir de buildImageQuery)
+function photoMatchesFilters(c) {
+  const f = state.filters;
+  if (f.triStatus && c.tri_status !== f.triStatus) return false;
+  if (f.triRatingMin > 0 && (Number(c.tri_rating) || 0) < f.triRatingMin) return false;
+  if (f.triParticipante === '__none__') { if (c.tri_participante) return false; }
+  else if (f.triParticipante) { if (!String(c.tri_participante || '').toLowerCase().includes(f.triParticipante.toLowerCase())) return false; }
+  if (f.triPratique === '__none__') { if (hasAnyTag(c, PRATIQUE_VALUES)) return false; }
+  else if (f.triPratique) { if (!triHas(c, f.triPratique)) return false; }
+  if (state.mediaType === 'photo') {
+    if (f.triFacilitateur === '__none__') { if (hasAnyTag(c, FACIL_VALUES)) return false; }
+    else if (f.triFacilitateur) { if (!triHas(c, f.triFacilitateur)) return false; }
+    if (f.triSalle === '__none__') { if (c.tri_salle) return false; }
+    else if (f.triSalle) { if (!String(c.tri_salle || '').toLowerCase().includes(f.triSalle.toLowerCase())) return false; }
+    if (f.triTagged === 'untagged') { if (isPhotoTagged(c)) return false; }
+    else if (f.triTagged === 'tagged') { if (!isPhotoTagged(c)) return false; }
+  }
+  if (f.triBug) { if (c.tri_status !== 'bug') return false; }
+  else if (f.triRefused) { if (c.tri_status !== 'refuse') return false; }
+  else if (f.triHide) { if (c.tri_status !== 'a_trier') return false; }
+  return true;
+}
+
+// Retire de la grille les photos qui ne correspondent plus aux filtres après un tag.
+function applyLiveFilterHide(ids, mode) {
+  if (isVideoMode()) return false;
+  const remove = ids.filter(id => { const c = state.clips.find(x => x.id === id); return c && !photoMatchesFilters(c); });
+  if (!remove.length) return false;
+  if (remove.length === 1 && mode !== 'sync') {
+    const c = state.clips.find(x => x.id === remove[0]);
+    const card = cardEl(remove[0]);
+    if (c && card && card.isConnected) { removeCardFromGrid(c, card); return true; }
+  }
+  const set = new Set(remove);
+  state.clips = state.clips.filter(x => !set.has(x.id));
+  if (state.filteredCount != null) state.filteredCount = Math.max(0, state.filteredCount - remove.length);
+  updateCounts();
+  return true;
+}
+
+// Overlay des tags sur la vignette (mode tri) : voir comment chaque photo est taguée d'un coup d'œil
+function paintCardTagOverlay(card, c) {
+  const ov = card && card.querySelector('.card-tags');
+  if (!ov) return;
+  const out = [];
+  const tags = Array.isArray(c.tri_tags) ? c.tri_tags : [];
+  for (const t of tags) { const lbl = TAG_SHORT[t]; if (lbl) out.push(`<span class="ct ${TAG_CLASS[t] || ''}">${lbl}</span>`); }
+  if (c.tri_participante) out.push(`<span class="ct ct-part">${escapeHtml(c.tri_participante)}</span>`);
+  if (c.tri_salle) out.push(`<span class="ct ct-salle">📍${escapeHtml(c.tri_salle)}</span>`);
+  ov.innerHTML = out.join('');
+}
+
 async function updateTri(c, card, patch) {
   Object.assign(c, patch);
   recomputeUsable(c);
   if (card) setCardTriVisual(card, c);
+  if (card && !isVideoMode()) paintCardTagOverlay(card, c);
   const { error } = await sb.from(mediaTable()).update(patch).eq('id', c.id);
   if (error) { console.error('updateTri', error); toast('Tri non sauvegardé', 'error'); return false; }
   return true;
@@ -1387,7 +1456,8 @@ function toggleTriTag(c, card, tag, on) {
     if (!on && i >= 0) tags.splice(i, 1);
     updateTri(cc, cardEl(id), { tri_tags: tags });
   }
-  if (ids.length > 1) { toast(`${ids.length} clips taggés`); renderGallery(); }
+  if (ids.length > 1) { toast(`${ids.length} ${isVideoMode() ? 'clips' : 'éléments'} taggés`); applyLiveFilterHide(ids, 'sync'); renderGallery(); }
+  else { applyLiveFilterHide(ids); }
 }
 
 // Applique un statut à la carte, ou à toute la sélection si la carte en fait partie (multi).
@@ -1399,20 +1469,25 @@ function setTriStatus(c, card, status) {
   }
   updateTriProgress();
   if (ids.length > 1) {
-    toast(`${ids.length} clips → ${triStatusLabel(status)}`);
-    if (state.filters.triHide && !state.filters.triRefused && !state.filters.triBug) {
-      const remove = new Set(ids.filter(id => { const cc = state.clips.find(x => x.id === id); return cc && isTriaged(cc); }));
-      if (remove.size) {
-        state.clips = state.clips.filter(x => !remove.has(x.id));
-        if (state.filteredCount != null) state.filteredCount = Math.max(0, state.filteredCount - remove.size);
+    toast(`${ids.length} ${isVideoMode() ? 'clips' : 'éléments'} → ${triStatusLabel(status)}`);
+    if (isVideoMode()) {
+      if (state.filters.triHide && !state.filters.triRefused && !state.filters.triBug) {
+        const remove = new Set(ids.filter(id => { const cc = state.clips.find(x => x.id === id); return cc && isTriaged(cc); }));
+        if (remove.size) {
+          state.clips = state.clips.filter(x => !remove.has(x.id));
+          if (state.filteredCount != null) state.filteredCount = Math.max(0, state.filteredCount - remove.size);
+        }
       }
+    } else {
+      applyLiveFilterHide(ids, 'sync');
     }
     state.selection.clear();
     lastSelIndex = null;
     updateSelectionBar();
     renderGallery();
   } else {
-    maybeHideTriaged(c, card);
+    if (isVideoMode()) maybeHideTriaged(c, card);
+    else applyLiveFilterHide(ids);
   }
 }
 
