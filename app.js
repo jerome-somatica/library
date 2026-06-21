@@ -594,6 +594,12 @@ function makeImageTriPanel(c, card) {
   }
   p.appendChild(rowR);
   p.appendChild(triDivider());
+  // Tags (photos uniquement) : facilitateur (exclusif) + pratiques
+  if (state.mediaType === 'photo') {
+    p.appendChild(renderTriTagWrap(c, card, TRI_FACILITATEUR, 'g4', true));
+    p.appendChild(renderTriTagWrap(c, card, TRI_PRACTICES, 'g3'));
+    p.appendChild(triDivider());
+  }
   // Commentaire
   const note = document.createElement('input');
   note.className = 'tri-field tri-comment';
@@ -648,6 +654,7 @@ function setMediaType(type) {
   state.selection.clear();
   lastSelIndex = null;
   updateSelectionBar();
+  buildBatchTriBar();
   populateTriParticipanteSelect();
   loadFirstPage();
   if (state.triMode) updateTriProgress();
@@ -1189,27 +1196,46 @@ const TRI_PRACTICES = [
   ['cacao', 'Cacao'],
 ];
 
+// Facilitateur (photos) : qui anime sur l'image (exclusif)
+const TRI_FACILITATEUR = [
+  ['facil_jerome', 'Jérôme'],
+  ['facil_nath', 'Nath'],
+  ['facil_duo', 'Les deux'],
+];
+
 // Rendu d'une ligne de cases à cocher (tags) pour une liste donnée
 function triDivider() {
   const d = document.createElement('div');
   d.className = 'tri-sep';
   return d;
 }
-// Rendu d'un groupe de tags en boutons-pastilles (toggle)
-function renderTriTagWrap(c, card, list, variant) {
+// Rendu d'un groupe de tags en boutons-pastilles (toggle).
+// exclusive = un seul actif à la fois dans le groupe (radio).
+function renderTriTagWrap(c, card, list, variant, exclusive) {
   const wrap = document.createElement('div');
   wrap.className = 'tri-chips';
+  const btns = [];
   for (const [val, label] of list) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'tri-chip' + (variant ? ' ' + variant : '');
     if (triHas(c, val)) b.classList.add('on');
     b.textContent = label;
+    b.dataset.val = val;
     b.addEventListener('click', () => {
       const newOn = !b.classList.contains('on');
+      if (exclusive && newOn) {
+        for (const ob of btns) {
+          if (ob !== b && ob.classList.contains('on')) {
+            ob.classList.remove('on');
+            toggleTriTag(c, card, ob.dataset.val, false);
+          }
+        }
+      }
       toggleTriTag(c, card, val, newOn);
       b.classList.toggle('on', newOn);
     });
+    btns.push(b);
     wrap.appendChild(b);
   }
   return wrap;
@@ -1958,14 +1984,20 @@ function buildBatchTriBar() {
   host.appendChild(ok);
   host.appendChild(no);
   host.appendChild(bug);
-  const sep = document.createElement('span');
-  sep.className = 'batch-sep'; sep.textContent = 'tags';
-  host.appendChild(sep);
-  for (const [val, label] of [...TRI_TAGS, ...TRI_CASES, ...TRI_PRACTICES]) {
-    const b = document.createElement('button');
-    b.className = 'batch-btn tag'; b.textContent = label;
-    b.addEventListener('click', () => applyBatchTag(val));
-    host.appendChild(b);
+  // Tags groupés selon le média : vidéo = jeu complet, photo = facilitateur + pratiques, images IA = aucun
+  const batchTags = state.mediaType === 'photo'
+    ? [...TRI_FACILITATEUR, ...TRI_PRACTICES]
+    : (state.mediaType === 'image' ? [] : [...TRI_TAGS, ...TRI_CASES, ...TRI_PRACTICES]);
+  if (batchTags.length) {
+    const sep = document.createElement('span');
+    sep.className = 'batch-sep'; sep.textContent = 'tags';
+    host.appendChild(sep);
+    for (const [val, label] of batchTags) {
+      const b = document.createElement('button');
+      b.className = 'batch-btn tag'; b.textContent = label;
+      b.addEventListener('click', () => applyBatchTag(val));
+      host.appendChild(b);
+    }
   }
 }
 
