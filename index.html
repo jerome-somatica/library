@@ -449,6 +449,12 @@ body.tri-on .card .thumb .usable-badge { display: none; }
 .modal-hevc-notice img { max-width: 160px; max-height: 280px; border-radius: 8px; }
 .modal-hevc-notice .mhn-msg { color: #ebd3a0; font-size: 14px; line-height: 1.5; }
 body.modal-open .gallery { visibility: hidden; }
+.media-switch { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.media-btn { padding: 7px 14px; border-radius: 8px; border: 1px solid rgba(235,211,160,0.3); background: transparent; color: #ebd3a0; font-size: 13px; font-weight: 500; cursor: pointer; }
+.media-btn:hover { background: rgba(235,211,160,0.1); }
+.media-btn.active { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+body.media-non-video #view-tabs { display: none; }
+.modal-img { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
 .modal-body { padding: 20px; }
 .modal-body .row { display: flex; gap: 12px; margin-bottom: 10px; font-size: 14px; }
 .modal-body .row .label { font-weight: 500; color: rgba(235,211,160,0.6); min-width: 100px; }
@@ -1420,6 +1426,11 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
       Somatica Library
       <span class="count" id="total-count">chargement...</span>
     </div>
+    <div class="media-switch" id="media-switch">
+      <button class="media-btn active" data-media="video">🎬 Vidéo</button>
+      <button class="media-btn" data-media="photo">📷 Photo</button>
+      <button class="media-btn" data-media="image">✨ Images</button>
+    </div>
   </header>
 
   <nav class="view-tabs" id="view-tabs">
@@ -1527,6 +1538,57 @@ body.tri-on .selection-bar.active .batch-tri { display: flex; }
             <input type="range" id="quality-slider" min="0" max="10" step="1" value="0">
             <span class="val" id="quality-val">0</span>
           </div>
+        </div>
+      </section>
+
+      <section class="drawer-section">
+        <h4>🏷️ Mon tri</h4>
+        <div class="drawer-field">
+          <label for="tri-status-filter">Statut</label>
+          <select id="tri-status-filter">
+            <option value="">Tous</option>
+            <option value="a_trier">À trier</option>
+            <option value="ok">OK</option>
+            <option value="refuse">Refusé</option>
+            <option value="bug">Bug</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="tri-rating-filter">Note minimum</label>
+          <select id="tri-rating-filter">
+            <option value="0">Toutes</option>
+            <option value="3">≥ 3</option>
+            <option value="5">≥ 5</option>
+            <option value="7">≥ 7 (très beau)</option>
+            <option value="9">≥ 9</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="tri-pratique-filter">Pratique</label>
+          <select id="tri-pratique-filter">
+            <option value="">Toutes</option>
+            <option value="innerdance">Innerdance</option>
+            <option value="breathwork">Breathwork</option>
+            <option value="qi_cleansing">Qi cleansing</option>
+            <option value="cacao">Cacao</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="tri-contexte-filter">Contexte / cas</label>
+          <select id="tri-contexte-filter">
+            <option value="">Tous</option>
+            <option value="formation">Formation</option>
+            <option value="seance">Séance</option>
+            <option value="individuel">Individuel</option>
+            <option value="duo_jerome_nathalie">Duo Jérôme &amp; Nathalie</option>
+            <option value="deja_monte">Déjà monté</option>
+            <option value="texte_incruste">Texte incrusté</option>
+            <option value="son_origine">Son d'origine ++</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="tri-participante-filter">Participante</label>
+          <select id="tri-participante-filter"><option value="">Toutes</option></select>
         </div>
       </section>
 

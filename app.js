@@ -49,6 +49,15 @@ const HEVC_SUPPORTED = (() => {
 })();
 function clipPreviewable(c) { return !(c && c.codec === 'hevc' && !HEVC_SUPPORTED); }
 
+// 3 sources média (boutons header). photo = image_library, image = generated_images (IA).
+const MEDIA = {
+  video: { table: 'video_library',    label: 'Vidéo',  participante: true },
+  photo: { table: 'image_library',    label: 'Photo',  participante: true },
+  image: { table: 'generated_images', label: 'Images', participante: false },
+};
+function mediaTable() { return (MEDIA[state.mediaType] || MEDIA.video).table; }
+function isVideoMode() { return state.mediaType === 'video'; }
+
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
@@ -77,6 +86,11 @@ const DEFAULT_FILTERS = {
   triHide: false, // mode tri : masquer les clips déjà triés
   triRefused: false, // mode tri : afficher uniquement les refusés
   triBug: false, // mode tri : afficher uniquement les buggés
+  triStatus: '',       // filtre drawer : statut de tri
+  triRatingMin: 0,     // filtre drawer : note minimale
+  triPratique: '',     // filtre drawer : tag pratique
+  triContexte: '',     // filtre drawer : tag contexte / cas
+  triParticipante: '', // filtre drawer : participante
   emotions: [],  // multi
   tags: [],      // multi
   personsNames: [],  // multi (noms Apple)
@@ -86,6 +100,7 @@ const state = {
   clips: [],                  // cumul paginé
   selection: new Set(),
   triMode: false,             // mode tri actif (panneau de tri par carte)
+  mediaType: 'video',         // 'video' | 'photo' | 'image' (3 boutons du header)
   currentModalId: null,
   session: null,
   filters: loadFilters(),
@@ -354,6 +369,7 @@ async function bootstrapCatalogs() {
   }
   state.catalog.participantes = participantes;
   populateParticipantesDatalist();
+  populateTriParticipanteSelect();
 
   populateSelect(ambianceFilter, state.catalog.ambiances, 'Toutes ambiances');
   populateSelect(movementFilter, state.catalog.movements, 'Tous mouvements');
@@ -449,7 +465,196 @@ document.addEventListener('click', (e) => {
 });
 
 // ---------- DATA FETCH ----------
+// ===================== FLUX PHOTO / IMAGES IA =====================
+function imageCols() {
+  return state.mediaType === 'photo'
+    ? 'id,r2_url,r2_key,filename,subject,category,ambiance,tags,quality_score,status,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante'
+    : 'id,r2_url,r2_key,prompt,model,source,tags,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante';
+}
+function buildImageQuery() {
+  let q = sb.from(mediaTable()).select(imageCols(), { count: 'exact' });
+  const f = state.filters;
+  if (f.triStatus) q = q.eq('tri_status', f.triStatus);
+  if (f.triRatingMin > 0) q = q.gte('tri_rating', f.triRatingMin);
+  if (f.triParticipante) q = q.ilike('tri_participante', `%${f.triParticipante}%`);
+  if (f.triBug) q = q.eq('tri_status', 'bug');
+  else if (f.triRefused) q = q.eq('tri_status', 'refuse');
+  else if (f.triHide) q = q.eq('tri_status', 'a_trier');
+  if (f.search) {
+    const s = f.search.replace(/[%_]/g, '');
+    const cols = state.mediaType === 'photo' ? ['filename', 'subject', 'category', 'ambiance'] : ['prompt', 'model', 'source'];
+    q = q.or(cols.map(c => `${c}.ilike.%${s}%`).join(','));
+  }
+  return q.order('created_at', { ascending: false, nullsFirst: false });
+}
+function imageLabel(c) {
+  if (state.mediaType === 'photo') return c.subject || c.category || c.filename || 'photo';
+  return c.prompt ? c.prompt.slice(0, 60) : (c.model || 'image IA');
+}
+function makeImageCard(c) {
+  const card = document.createElement('div');
+  card.className = state.selection.has(c.id) ? 'card selected' : 'card';
+  card.dataset.id = c.id;
+  const thumb = document.createElement('div');
+  thumb.className = 'thumb';
+  const img = document.createElement('img');
+  img.loading = 'lazy'; img.decoding = 'async';
+  img.dataset.imgSrc = c.r2_url;
+  img.alt = imageLabel(c);
+  thumb.appendChild(img);
+  getThumbObserver().observe(img);
+  const cb = document.createElement('div');
+  cb.className = 'select-checkbox';
+  cb.textContent = state.selection.has(c.id) ? '✓' : '';
+  cb.addEventListener('click', e => { e.stopPropagation(); handleSelectClick(c.id, e.shiftKey); });
+  thumb.appendChild(cb);
+  card.appendChild(thumb);
+  const info = document.createElement('div');
+  info.className = 'info';
+  const amb = document.createElement('div');
+  amb.className = 'amb';
+  amb.textContent = imageLabel(c);
+  info.appendChild(amb);
+  card.appendChild(info);
+  setCardTriVisual(card, c);
+  card.appendChild(makeImageTriPanel(c, card));
+  card.addEventListener('click', (e) => {
+    if (state.triMode) handleSelectClick(c.id, e.shiftKey);
+    else openImageModal(c);
+  });
+  card.addEventListener('mouseenter', () => { hoveredCardId = c.id; });
+  card.addEventListener('mouseleave', () => { if (hoveredCardId === c.id) hoveredCardId = null; });
+  return card;
+}
+function makeImageTriPanel(c, card) {
+  const p = document.createElement('div');
+  p.className = 'tri-panel';
+  p.addEventListener('click', e => e.stopPropagation());
+  // OK / Refusé / Bug
+  const rowS = document.createElement('div');
+  rowS.className = 'tri-row';
+  const reflect = () => {
+    okB.classList.toggle('on', c.tri_status === 'ok');
+    noB.classList.toggle('on', c.tri_status === 'refuse');
+    bugB.classList.toggle('on', c.tri_status === 'bug');
+  };
+  const mk = (cls, label, st) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tri-status-btn ' + cls; b.textContent = label;
+    b.addEventListener('click', () => { setTriStatus(c, card, c.tri_status === st ? 'a_trier' : st); reflect(); });
+    return b;
+  };
+  const okB = mk('ok', 'OK', 'ok');
+  const noB = mk('refuse', 'Refusé', 'refuse');
+  const bugB = mk('bug', 'Bug', 'bug');
+  reflect();
+  rowS.appendChild(okB); rowS.appendChild(noB); rowS.appendChild(bugB);
+  // Étoiles (+ participante sur les photos)
+  const rowR = document.createElement('div');
+  rowR.className = 'tri-row tri-toprow';
+  const stars = document.createElement('div');
+  stars.className = 'tri-stars';
+  const ratingVal = document.createElement('span');
+  ratingVal.className = 'tri-rating-val';
+  const showVal = (n) => { ratingVal.textContent = n ? `${n}/10` : ''; };
+  for (let i = 1; i <= 10; i++) {
+    const s = document.createElement('span');
+    s.className = 'st'; s.innerHTML = '&#9733;';
+    s.addEventListener('click', () => {
+      const nv = (c.tri_rating === i) ? 0 : i;
+      updateTri(c, card, { tri_rating: nv });
+      paintStars(stars, nv); showVal(nv);
+    });
+    stars.appendChild(s);
+  }
+  paintStars(stars, c.tri_rating || 0);
+  showVal(c.tri_rating || 0);
+  rowR.appendChild(stars);
+  rowR.appendChild(ratingVal);
+  if (MEDIA[state.mediaType] && MEDIA[state.mediaType].participante) {
+    const part = document.createElement('input');
+    part.className = 'tri-field tri-participante';
+    part.type = 'text'; part.placeholder = 'participante…';
+    part.setAttribute('list', 'participantes-list');
+    part.value = c.tri_participante || '';
+    const savePart = () => {
+      const v = part.value.trim();
+      const ids = triTargets(c);
+      for (const id of ids) {
+        const cc = state.clips.find(x => x.id === id);
+        if (!cc) continue;
+        if ((cc.tri_participante || '') !== v) updateTri(cc, cardEl(id), { tri_participante: v || null });
+        if (id !== c.id) { const el = cardEl(id); const inp = el && el.querySelector('.tri-participante'); if (inp) inp.value = v; }
+      }
+      harvestParticipantes(v);
+    };
+    part.addEventListener('change', savePart);
+    part.addEventListener('blur', savePart);
+    rowR.appendChild(part);
+  }
+  p.appendChild(rowR);
+  p.appendChild(triDivider());
+  // Commentaire
+  const note = document.createElement('input');
+  note.className = 'tri-field tri-comment';
+  note.type = 'text'; note.placeholder = 'commentaire…';
+  note.value = c.tri_note || '';
+  const saveNote = () => {
+    const v = note.value.trim();
+    const ids = triTargets(c);
+    for (const id of ids) {
+      const cc = state.clips.find(x => x.id === id);
+      if (!cc) continue;
+      if ((cc.tri_note || '') !== v) updateTri(cc, cardEl(id), { tri_note: v || null });
+      if (id !== c.id) { const el = cardEl(id); const inp = el && el.querySelector('.tri-comment'); if (inp) inp.value = v; }
+    }
+  };
+  note.addEventListener('change', saveNote);
+  note.addEventListener('blur', saveNote);
+  p.appendChild(note);
+  p.appendChild(triDivider());
+  p.appendChild(rowS);
+  return p;
+}
+function openImageModal(c) {
+  if (activePreview) activePreview.stop();
+  document.body.classList.add('modal-open');
+  state.currentModalId = c.id;
+  modalTitle.textContent = imageLabel(c);
+  modalVideo.pause(); modalVideo.removeAttribute('src'); try { modalVideo.load(); } catch (e) {}
+  modalVideo.style.display = 'none';
+  const container = modalVideo.parentElement;
+  let im = container.querySelector('.modal-img');
+  if (!im) { im = document.createElement('img'); im.className = 'modal-img'; container.appendChild(im); }
+  im.src = c.r2_url; im.style.display = '';
+  modalBody.innerHTML = '';
+  const rows = state.mediaType === 'photo'
+    ? [['Sujet', c.subject], ['Catégorie', c.category], ['Ambiance', c.ambiance], ['Qualité', c.quality_score != null ? c.quality_score + '/10' : null], ['Tags', (c.tags || []).join(', ')]]
+    : [['Prompt', c.prompt], ['Modèle', c.model], ['Source', c.source], ['Tags', (c.tags || []).join(', ')]];
+  for (const [label, value] of rows) {
+    if (!value) continue;
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(String(value))}</div>`;
+    modalBody.appendChild(row);
+  }
+  modalBg.classList.add('active');
+}
+function setMediaType(type) {
+  if (!MEDIA[type] || type === state.mediaType) return;
+  state.mediaType = type;
+  document.querySelectorAll('#media-switch .media-btn').forEach(b => b.classList.toggle('active', b.dataset.media === type));
+  document.body.classList.toggle('media-non-video', type !== 'video');
+  state.selection.clear();
+  lastSelIndex = null;
+  updateSelectionBar();
+  populateTriParticipanteSelect();
+  loadFirstPage();
+  if (state.triMode) updateTriProgress();
+}
+
 function buildQuery() {
+  if (!isVideoMode()) return buildImageQuery();
   let q = sb.from('video_library').select(LIGHT_COLS, { count: 'exact' });
 
   const f = state.filters;
@@ -476,6 +681,13 @@ function buildQuery() {
   } else if (f.triHide) {
     q = q.or('tri_status.eq.a_trier,and(tri_status.eq.ok,tri_rating.is.null),and(tri_status.eq.ok,tri_rating.eq.0)');
   }
+
+  // Filtres "Mon tri" (drawer)
+  if (f.triStatus) q = q.eq('tri_status', f.triStatus);
+  if (f.triRatingMin > 0) q = q.gte('tri_rating', f.triRatingMin);
+  if (f.triPratique) q = q.contains('tri_tags', [f.triPratique]);
+  if (f.triContexte) q = q.contains('tri_tags', [f.triContexte]);
+  if (f.triParticipante) q = q.ilike('tri_participante', `%${f.triParticipante}%`);
 
   if (f.persons === '0') q = q.eq('persons_count', 0);
   else if (f.persons === '1') q = q.eq('persons_count', 1);
@@ -618,6 +830,7 @@ async function getAllUsedVideoIds() {
 // Pour chaque clip chargé, récupère son usage (count, feed_image_ids, last_used_at)
 // depuis vw_video_library_usage et l'attache au clip.
 async function enrichWithUsage(clips) {
+  if (!isVideoMode()) return;
   if (!clips || !clips.length) return;
   const ids = clips.map(c => c.id);
   const { data, error } = await sb
@@ -718,6 +931,7 @@ function renderGallery() {
 }
 
 function makeCard(c) {
+  if (!isVideoMode()) return makeImageCard(c);
   const card = document.createElement('div');
   const classes = ['card'];
   if (state.selection.has(c.id)) classes.push('selected');
@@ -1007,6 +1221,14 @@ function populateParticipantesDatalist() {
   const names = [...(state.catalog.participantes || [])].sort((a, b) => a.localeCompare(b));
   dl.innerHTML = names.map(n => `<option value="${escapeAttr(n)}"></option>`).join('');
 }
+function populateTriParticipanteSelect() {
+  const el = document.getElementById('tri-participante-filter');
+  if (!el) return;
+  const cur = el.value;
+  const names = [...(state.catalog.participantes || [])].sort((a, b) => a.localeCompare(b));
+  el.innerHTML = '<option value="">Toutes</option>' + names.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('');
+  el.value = cur;
+}
 function harvestParticipantes(v) {
   if (!v) return;
   if (!state.catalog.participantes) state.catalog.participantes = new Set();
@@ -1032,7 +1254,7 @@ async function updateTri(c, card, patch) {
   Object.assign(c, patch);
   recomputeUsable(c);
   if (card) setCardTriVisual(card, c);
-  const { error } = await sb.from('video_library').update(patch).eq('id', c.id);
+  const { error } = await sb.from(mediaTable()).update(patch).eq('id', c.id);
   if (error) { console.error('updateTri', error); toast('Tri non sauvegardé', 'error'); return false; }
   return true;
 }
@@ -1256,7 +1478,7 @@ async function updateTriProgress() {
   const el = document.getElementById('tri-progress');
   if (!el) return;
   try {
-    const head = (st) => sb.from('video_library').select('id', { count: 'exact', head: true }).eq('status', 'available').eq('tri_status', st);
+    const head = (st) => { let qq = sb.from(mediaTable()).select('id', { count: 'exact', head: true }).eq('tri_status', st); if (state.mediaType === 'video') qq = qq.eq('status', 'available'); return qq; };
     const [a, o, r, b] = await Promise.all([head('a_trier'), head('ok'), head('refuse'), head('bug')]);
     el.textContent = `À trier : ${a.count ?? '?'} · OK : ${o.count ?? '?'} · Refusé : ${r.count ?? '?'} · Bug : ${b.count ?? '?'}`;
   } catch (e) { /* silencieux */ }
@@ -1300,6 +1522,12 @@ function syncFiltersToUI() {
   if (tr) tr.checked = !!f.triRefused;
   const tb = document.getElementById('tri-bug-checkbox');
   if (tb) tb.checked = !!f.triBug;
+  const setSel = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  setSel('tri-status-filter', f.triStatus || '');
+  setSel('tri-rating-filter', String(f.triRatingMin || 0));
+  setSel('tri-pratique-filter', f.triPratique || '');
+  setSel('tri-contexte-filter', f.triContexte || '');
+  setSel('tri-participante-filter', f.triParticipante || '');
 }
 
 searchInput.addEventListener('input', debounce(e => {
@@ -1352,6 +1580,19 @@ locationFilter.addEventListener('change', e => { state.filters.location = e.targ
 durationFilter.addEventListener('change', e => { state.filters.duration = e.target.value; resetAndReload(); });
 statusFilter.addEventListener('change', e => { state.filters.status = e.target.value; resetAndReload(); });
 analysisFilter.addEventListener('change', e => { state.filters.analysis = e.target.value; resetAndReload(); });
+
+const wireTriSel = (id, key, asNum) => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', e => { state.filters[key] = asNum ? Number(e.target.value) : e.target.value; resetAndReload(); });
+};
+wireTriSel('tri-status-filter', 'triStatus', false);
+wireTriSel('tri-rating-filter', 'triRatingMin', true);
+wireTriSel('tri-pratique-filter', 'triPratique', false);
+wireTriSel('tri-contexte-filter', 'triContexte', false);
+wireTriSel('tri-participante-filter', 'triParticipante', false);
+
+const mediaSwitch = document.getElementById('media-switch');
+if (mediaSwitch) mediaSwitch.addEventListener('click', (e) => { const b = e.target.closest('.media-btn'); if (b) setMediaType(b.dataset.media); });
 
 resetFiltersBtn.addEventListener('click', () => {
   state.filters = {
@@ -1514,6 +1755,7 @@ const FILTER_LABELS = {
 function isActiveValue(key, val) {
   if (key === 'usableReel') return val === true;
   if (key === 'qualityMin') return Number(val) > 0;
+  if (key === 'triRatingMin') return Number(val) > 0;
   if (key === 'status') return val && val !== 'available'; // 'available' = défaut
   if (key === 'sort') return false; // sort caché des chips
   if (Array.isArray(val)) return val.length > 0;
@@ -1668,7 +1910,7 @@ async function deleteClipFull(c) {
     } catch (e) { console.warn('R2 delete', e); }
   }
   // 3. Supprimer la ligne en base
-  const { error } = await sb.from('video_library').delete().eq('id', c.id);
+  const { error } = await sb.from(mediaTable()).delete().eq('id', c.id);
   if (error) throw error;
 }
 
@@ -1731,7 +1973,7 @@ async function applyBatchStatus(status) {
   const ids = [...state.selection];
   if (!ids.length) { toast('Aucune sélection'); return; }
   for (const id of ids) { const c = state.clips.find(x => x.id === id); if (c) { c.tri_status = status; recomputeUsable(c); } }
-  const { error } = await sb.from('video_library').update({ tri_status: status }).in('id', ids);
+  const { error } = await sb.from(mediaTable()).update({ tri_status: status }).in('id', ids);
   if (error) { console.error('applyBatchStatus', error); toast('Échec de la mise à jour', 'error'); return; }
   toast(`${ids.length} clip(s) → ${triStatusLabel(status)}`);
   updateTriProgressDebounced();
@@ -1760,7 +2002,7 @@ async function applyBatchTag(tag) {
     if (add && i < 0) tags.push(tag);
     if (!add && i >= 0) tags.splice(i, 1);
     c.tri_tags = tags; recomputeUsable(c);
-    return sb.from('video_library').update({ tri_tags: tags }).eq('id', c.id).then(({ error }) => { if (error) console.error('applyBatchTag', error); });
+    return sb.from(mediaTable()).update({ tri_tags: tags }).eq('id', c.id).then(({ error }) => { if (error) console.error('applyBatchTag', error); });
   }));
   toast(`${clips.length} clip(s) : ${add ? 'tag ajouté' : 'tag retiré'}`);
   renderGallery();
@@ -1782,6 +2024,7 @@ function openModal(id) {
   if (!c) return;
   if (activePreview) activePreview.stop(); // couper les aperçus de la galerie derrière la modale
   document.body.classList.add('modal-open'); // masque la galerie (évite que les vidéos percent par-dessus)
+  const _mi0 = modalVideo.parentElement.querySelector('.modal-img'); if (_mi0) _mi0.style.display = 'none';
   state.currentModalId = id;
   modalTitle.textContent = c.ambiance ? c.ambiance : (c.file_name || 'Clip');
   if (clipPreviewable(c)) {
@@ -1869,6 +2112,8 @@ function closeModal() {
   modalVideo.src = '';
   modalVideo.style.display = '';
   setModalHevcNotice(null);
+  const _mi = modalVideo.parentElement.querySelector('.modal-img');
+  if (_mi) { _mi.src = ''; _mi.style.display = 'none'; }
   state.currentModalId = null;
 }
 
