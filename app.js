@@ -486,6 +486,8 @@ function buildImageQuery() {
   if (state.mediaType === 'photo') {
     if (f.triFacilitateur === '__none__') q = q.not('tri_tags', 'ov', '{facil_jerome,facil_nath,facil_duo}');
     else if (f.triFacilitateur) q = q.contains('tri_tags', [f.triFacilitateur]);
+    if (f.triContexte === '__none__') q = q.not('tri_tags', 'ov', '{formation,seance,individuel}');
+    else if (f.triContexte) q = q.contains('tri_tags', [f.triContexte]);
     if (f.triSalle === '__none__') q = q.is('tri_salle', null);
     else if (f.triSalle) q = q.ilike('tri_salle', `%${f.triSalle}%`);
     // Sans étiquette : aucun tag, pas de participante, pas de salle (tri_tags normalisé en '{}')
@@ -614,9 +616,10 @@ function makeImageTriPanel(c, card) {
   }
   p.appendChild(rowR);
   p.appendChild(triDivider());
-  // Tags (photos uniquement) : facilitateur (exclusif) + pratiques + salle
+  // Tags (photos uniquement) : facilitateur (exclusif) + contexte + pratiques + salle
   if (state.mediaType === 'photo') {
     p.appendChild(renderTriTagWrap(c, card, TRI_FACILITATEUR, 'g4', true));
+    p.appendChild(renderTriTagWrap(c, card, TRI_CTX1));
     p.appendChild(renderTriTagWrap(c, card, TRI_PRACTICES, 'g3'));
     const salle = document.createElement('input');
     salle.className = 'tri-field tri-salle';
@@ -737,7 +740,7 @@ function buildQuery() {
   if (f.triStatus) q = q.eq('tri_status', f.triStatus);
   if (f.triRatingMin > 0) q = q.gte('tri_rating', f.triRatingMin);
   if (f.triPratique && f.triPratique !== '__none__') q = q.contains('tri_tags', [f.triPratique]);
-  if (f.triContexte) q = q.contains('tri_tags', [f.triContexte]);
+  if (f.triContexte && f.triContexte !== '__none__') q = q.contains('tri_tags', [f.triContexte]);
   if (f.triParticipante === '__none__') q = q.is('tri_participante', null);
   else if (f.triParticipante) q = q.ilike('tri_participante', `%${f.triParticipante}%`);
 
@@ -1371,8 +1374,9 @@ function recomputeUsable(c) {
 // Valeurs de tags par dimension (photos) + libellés courts pour l'overlay vignette
 const FACIL_VALUES = ['facil_jerome', 'facil_nath', 'facil_duo'];
 const PRATIQUE_VALUES = ['innerdance', 'breathwork', 'qi_cleansing', 'cacao'];
-const TAG_SHORT = { facil_jerome: 'Jérôme', facil_nath: 'Nath', facil_duo: 'Les deux', innerdance: 'Inner', breathwork: 'Breath', qi_cleansing: 'Qi', cacao: 'Cacao' };
-const TAG_CLASS = { facil_jerome: 'ct-facil', facil_nath: 'ct-facil', facil_duo: 'ct-facil', innerdance: 'ct-prat', breathwork: 'ct-prat', qi_cleansing: 'ct-prat', cacao: 'ct-prat' };
+const CTX_VALUES = ['formation', 'seance', 'individuel'];
+const TAG_SHORT = { facil_jerome: 'Jérôme', facil_nath: 'Nath', facil_duo: 'Les deux', formation: 'Formation', seance: 'Séance', individuel: 'Individuel', innerdance: 'Inner', breathwork: 'Breath', qi_cleansing: 'Qi', cacao: 'Cacao' };
+const TAG_CLASS = { facil_jerome: 'ct-facil', facil_nath: 'ct-facil', facil_duo: 'ct-facil', formation: 'ct-ctx', seance: 'ct-ctx', individuel: 'ct-ctx', innerdance: 'ct-prat', breathwork: 'ct-prat', qi_cleansing: 'ct-prat', cacao: 'ct-prat' };
 function hasAnyTag(c, arr) { return Array.isArray(c.tri_tags) && c.tri_tags.some(t => arr.includes(t)); }
 function isPhotoTagged(c) { return (Array.isArray(c.tri_tags) && c.tri_tags.length > 0) || !!c.tri_participante || !!c.tri_salle; }
 
@@ -1388,6 +1392,8 @@ function photoMatchesFilters(c) {
   if (state.mediaType === 'photo') {
     if (f.triFacilitateur === '__none__') { if (hasAnyTag(c, FACIL_VALUES)) return false; }
     else if (f.triFacilitateur) { if (!triHas(c, f.triFacilitateur)) return false; }
+    if (f.triContexte === '__none__') { if (hasAnyTag(c, CTX_VALUES)) return false; }
+    else if (f.triContexte) { if (!triHas(c, f.triContexte)) return false; }
     if (f.triSalle === '__none__') { if (c.tri_salle) return false; }
     else if (f.triSalle) { if (!String(c.tri_salle || '').toLowerCase().includes(f.triSalle.toLowerCase())) return false; }
     if (f.triTagged === 'untagged') { if (isPhotoTagged(c)) return false; }
@@ -1717,6 +1723,7 @@ function syncFiltersToUI() {
   setSel('pf-status', f.triStatus || '');
   setSel('pf-rating', String(f.triRatingMin || 0));
   setSel('pf-facil', f.triFacilitateur || '');
+  setSel('pf-contexte', f.triContexte || '');
   setSel('pf-pratique', f.triPratique || '');
   setSel('pf-salle', f.triSalle || '');
   setSel('pf-participante', f.triParticipante || '');
@@ -1787,6 +1794,7 @@ wireTriSel('tri-participante-filter', 'triParticipante', false);
 wireTriSel('pf-status', 'triStatus', false);
 wireTriSel('pf-rating', 'triRatingMin', true);
 wireTriSel('pf-facil', 'triFacilitateur', false);
+wireTriSel('pf-contexte', 'triContexte', false);
 wireTriSel('pf-pratique', 'triPratique', false);
 wireTriSel('pf-salle', 'triSalle', false);
 wireTriSel('pf-participante', 'triParticipante', false);
@@ -2164,7 +2172,7 @@ function buildBatchTriBar() {
   host.appendChild(bug);
   // Tags groupés selon le média : vidéo = jeu complet, photo = facilitateur + pratiques, images IA = aucun
   const batchTags = state.mediaType === 'photo'
-    ? [...TRI_FACILITATEUR, ...TRI_PRACTICES]
+    ? [...TRI_FACILITATEUR, ...TRI_CTX1, ...TRI_PRACTICES]
     : (state.mediaType === 'image' ? [] : [...TRI_TAGS, ...TRI_CASES, ...TRI_PRACTICES]);
   if (batchTags.length) {
     const sep = document.createElement('span');

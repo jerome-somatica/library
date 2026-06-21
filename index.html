@@ -442,6 +442,7 @@ body.tri-on .card-tags {
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .card-tags .ct.ct-facil { background: rgba(216,182,214,0.94); color: #2c0f2a; }
+.card-tags .ct.ct-ctx { background: rgba(156,198,221,0.5); color: #ebd3a0; }
 .card-tags .ct.ct-prat { background: rgba(159,217,196,0.94); color: #06322a; }
 .card-tags .ct.ct-part { background: rgba(235,211,160,0.94); color: #0f2f3a; }
 .card-tags .ct.ct-salle { background: rgba(156,198,221,0.94); color: #06283a; }
@@ -1584,6 +1585,13 @@ body[data-media="image"] .photo-only { display: none; }
         <option value="facil_nath">Nath</option>
         <option value="facil_duo">Les deux</option>
       </select>
+      <select id="pf-contexte" class="photo-only" title="Contexte">
+        <option value="">Tous contextes</option>
+        <option value="__none__">Sans contexte</option>
+        <option value="formation">Formation</option>
+        <option value="seance">Séance</option>
+        <option value="individuel">Individuel</option>
+      </select>
       <select id="pf-pratique" title="Pratique">
         <option value="">Toutes pratiques</option>
         <option value="__none__">Sans pratique</option>
@@ -2073,7 +2081,7 @@ body[data-media="image"] .photo-only { display: none; }
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <datalist id="participantes-list"></datalist>
 <datalist id="salles-list"></datalist>
-<script src="app.js?v=20260621f"></script>
-<script src="admin.js?v=20260621f"></script>
+<script src="app.js?v=20260621g"></script>
+<script src="admin.js?v=20260621g"></script>
 </body>
 </html>
