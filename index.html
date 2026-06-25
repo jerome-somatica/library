@@ -487,6 +487,10 @@ body.modal-open .gallery { visibility: hidden; }
 .media-btn { padding: 7px 14px; border-radius: 8px; border: 1px solid rgba(235,211,160,0.3); background: transparent; color: #ebd3a0; font-size: 13px; font-weight: 500; cursor: pointer; }
 .media-btn:hover { background: rgba(235,211,160,0.1); }
 .media-btn.active { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+.sel-toggle { margin-top: 10px; margin-left: 8px; padding: 7px 14px; border-radius: 8px; border: 1px solid rgba(235,211,160,0.3); background: transparent; color: #ebd3a0; font-size: 13px; font-weight: 500; cursor: pointer; }
+.sel-toggle:hover { background: rgba(235,211,160,0.12); }
+.sel-toggle.active { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+.tri-status-btn.flag.on { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
 body.media-non-video #view-tabs { display: none; }
 .modal-img { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
 .modal-body { padding: 20px; }
@@ -1490,6 +1494,9 @@ body[data-media="image"] .photo-only { display: none; }
       <button class="media-btn" data-media="photo">📷 Photo</button>
       <button class="media-btn" data-media="image">✨ Images</button>
     </div>
+    <button class="sel-toggle" id="sel-flag" type="button" title="Marquer les cartes cochées (✓) comme sélection à signaler">📌 Signaler les cochées</button>
+    <button class="sel-toggle" id="sel-view" type="button" title="N'afficher que ma sélection signalée">👁️ Ma sélection <span id="sel-count"></span></button>
+    <button class="sel-toggle" id="sel-clear" type="button" title="Tout dé-signaler (vider ma sélection)">✕ Vider</button>
   </header>
 
   <nav class="view-tabs" id="view-tabs">

@@ -39,7 +39,7 @@ const LIGHT_COLS = [
   'quality_score', 'persons_count', 'persons_detected',
   'music_present', 'has_speech', 'emotional_intensity', 'emotional_states',
   'usable_for_reel', 'location_name',
-  'tri_status', 'tri_rating', 'tri_note', 'tri_tags', 'tri_participante', 'codec', 'content_hash',
+  'tri_status', 'tri_rating', 'tri_note', 'tri_tags', 'tri_participante', 'codec', 'content_hash', 'flagged',
 ].join(',');
 
 // Le navigateur sait-il décoder le HEVC/H.265 ? (Safari oui, Chrome souvent non)
@@ -87,6 +87,7 @@ const DEFAULT_FILTERS = {
   triRefused: false, // mode tri : afficher uniquement les refusés
   triBug: false, // mode tri : afficher uniquement les buggés
   triStatus: '',       // filtre drawer : statut de tri
+  flaggedOnly: false,  // 📌 n'afficher que ma sélection (colonne flagged)
   triRatingMin: 0,     // filtre drawer : note minimale
   triPratique: '',     // filtre : tag pratique
   triContexte: '',     // filtre drawer : tag contexte / cas
@@ -471,8 +472,8 @@ document.addEventListener('click', (e) => {
 // ===================== FLUX PHOTO / IMAGES IA =====================
 function imageCols() {
   return state.mediaType === 'photo'
-    ? 'id,r2_url,r2_key,filename,subject,category,ambiance,tags,quality_score,status,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante,tri_salle'
-    : 'id,r2_url,r2_key,prompt,model,source,tags,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante';
+    ? 'id,r2_url,r2_key,filename,subject,category,ambiance,tags,quality_score,status,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante,tri_salle,flagged'
+    : 'id,r2_url,r2_key,prompt,model,source,tags,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante,flagged';
 }
 function buildImageQuery() {
   let q = sb.from(mediaTable()).select(imageCols(), { count: 'exact' });
@@ -497,6 +498,7 @@ function buildImageQuery() {
   if (f.triBug) q = q.eq('tri_status', 'bug');
   else if (f.triRefused) q = q.eq('tri_status', 'refuse');
   else if (f.triHide) q = q.eq('tri_status', 'a_trier');
+  if (f.flaggedOnly) q = q.eq('flagged', true);
   if (f.search) {
     const s = f.search.replace(/[%_]/g, '');
     const cols = state.mediaType === 'photo' ? ['filename', 'subject', 'category', 'ambiance'] : ['prompt', 'model', 'source'];
@@ -705,6 +707,7 @@ function setMediaType(type) {
   reloadColsForMode();
   loadFirstPage();
   if (state.triMode) updateTriProgress();
+  updateFlaggedCount();
 }
 
 function buildQuery() {
@@ -743,6 +746,8 @@ function buildQuery() {
   if (f.triContexte && f.triContexte !== '__none__') q = q.contains('tri_tags', [f.triContexte]);
   if (f.triParticipante === '__none__') q = q.is('tri_participante', null);
   else if (f.triParticipante) q = q.ilike('tri_participante', `%${f.triParticipante}%`);
+
+  if (f.flaggedOnly) q = q.eq('flagged', true);
 
   if (f.persons === '0') q = q.eq('persons_count', 0);
   else if (f.persons === '1') q = q.eq('persons_count', 1);
@@ -1802,6 +1807,43 @@ wireTriSel('pf-tagged', 'triTagged', false);
 
 const mediaSwitch = document.getElementById('media-switch');
 if (mediaSwitch) mediaSwitch.addEventListener('click', (e) => { const b = e.target.closest('.media-btn'); if (b) setMediaType(b.dataset.media); });
+// 📌 Sélection à signaler : on REUTILISE la sélection existante (cases ✓, state.selection),
+// on la persiste dans flagged pour que Claude puisse la lire.
+const selFlag = document.getElementById('sel-flag');
+if (selFlag) selFlag.addEventListener('click', async () => {
+  const ids = [...state.selection];
+  if (!ids.length) { if (typeof toast === 'function') toast('Coche d\'abord des cartes (✓), puis Signaler'); return; }
+  const { error } = await sb.from(mediaTable()).update({ flagged: true }).in('id', ids);
+  if (error) { console.error('signaler', error); if (typeof toast === 'function') toast('Erreur : ' + error.message); return; }
+  ids.forEach(id => { const cc = state.clips.find(x => x.id === id); if (cc) cc.flagged = true; });
+  if (typeof toast === 'function') toast(`${ids.length} dans ma sélection 📌`);
+  state.selection.clear();
+  if (typeof renderGallery === 'function') renderGallery();
+  updateFlaggedCount();
+});
+const selView = document.getElementById('sel-view');
+if (selView) selView.addEventListener('click', () => {
+  state.filters.flaggedOnly = !state.filters.flaggedOnly;
+  selView.classList.toggle('active', state.filters.flaggedOnly);
+  loadFirstPage();
+});
+const selClear = document.getElementById('sel-clear');
+if (selClear) selClear.addEventListener('click', async () => {
+  const { error } = await sb.from(mediaTable()).update({ flagged: false }).eq('flagged', true);
+  if (error) { console.error('vider', error); return; }
+  if (typeof toast === 'function') toast('Sélection vidée');
+  if (state.filters.flaggedOnly) { state.filters.flaggedOnly = false; if (selView) selView.classList.remove('active'); }
+  loadFirstPage();
+  updateFlaggedCount();
+});
+async function updateFlaggedCount() {
+  try {
+    const { count } = await sb.from(mediaTable()).select('id', { count: 'exact', head: true }).eq('flagged', true);
+    const el = document.getElementById('sel-count');
+    if (el) el.textContent = count ? `(${count})` : '';
+  } catch (e) { /* silencieux */ }
+}
+updateFlaggedCount();
 document.body.dataset.media = state.mediaType || 'video';
 
 resetFiltersBtn.addEventListener('click', () => {
