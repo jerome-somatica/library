@@ -89,6 +89,22 @@
     try { return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }); }
     catch (e) { return ''; }
   }
+  function recFmtDuration(sec) {
+    if (sec == null || !(sec > 0)) return '';
+    const m = Math.round(sec / 60);
+    if (m < 60) return m + ' min';
+    const h = Math.floor(m / 60), mm = m % 60;
+    return mm ? `${h}h ${String(mm).padStart(2, '0')}` : `${h}h`;
+  }
+  function recFmtParticipants(count, list) {
+    const names = (list || []).map((p) => p && p.first_name).filter(Boolean);
+    const n = count || names.length;
+    if (!n) return '';
+    const label = n > 1 ? `${n} participantes` : `${n} participante`;
+    if (!names.length) return label;
+    const shown = names.slice(0, 6).join(', ');
+    return `${label} : ${shown}${names.length > 6 ? '…' : ''}`;
+  }
 
   async function recFetchList() {
     // Le compte Library n'est pas forcement le facilitateur ISIS : on passe par l'Edge de
@@ -132,15 +148,29 @@
     const thumb = cover
       ? `<div class="rec-thumb" style="background-image:url('${cover.replace(/['"\\]/g, '')}')"><span class="rec-play">▶</span></div>`
       : `<div class="rec-thumb"><span class="rec-thumb-empty">🎥</span></div>`;
-    return `<div class="rec-card" data-code="${recEsc(r.code)}">
+    const codeEsc = recEsc(r.code);
+    const dateStr = recFmtDate(r.recorded_at || r.created_at);
+    const durStr = recFmtDuration(r.duration_sec);
+    const meta = durStr ? `${dateStr} · ${durStr}` : dateStr;
+    const parts = recFmtParticipants(r.participant_count, r.participants);
+    return `<div class="rec-card" data-code="${codeEsc}">
       <a href="${replay}" target="_blank" rel="noopener" class="rec-thumb-link">${thumb}</a>
       <div class="rec-body">
         <div class="rec-title">${recEsc(r.title)}</div>
-        <div class="rec-date">${recFmtDate(r.created_at)}</div>
+        <div class="rec-date">${meta}</div>
+        ${parts ? `<div class="rec-participants">👥 ${recEsc(parts)}</div>` : ''}
         <div class="rec-actions">
           <a class="rec-btn primary" href="${replay}" target="_blank" rel="noopener">Regarder</a>
-          <button class="rec-btn" data-act="copy" data-code="${recEsc(r.code)}">Copier le lien</button>
-          <button class="rec-btn" data-act="dl" data-code="${recEsc(r.code)}">Télécharger</button>
+          <button class="rec-btn" data-act="copy" data-code="${codeEsc}">Copier le lien</button>
+          <button class="rec-btn" data-act="dl" data-code="${codeEsc}">Télécharger</button>
+        </div>
+        <div class="rec-notes">
+          <label class="rec-notes-label">Notes</label>
+          <textarea class="rec-note-text" rows="2" placeholder="Ajouter une note (ressenti, moment fort, à retravailler...)">${recEsc(r.notes || '')}</textarea>
+          <div class="rec-note-row">
+            <button class="rec-btn" data-act="note-save" data-code="${codeEsc}">Enregistrer</button>
+            <span class="rec-note-msg"></span>
+          </div>
         </div>
       </div>
     </div>`;
@@ -173,6 +203,28 @@
       const btn = e.target.closest('#view-recordings .rec-btn[data-act]');
       if (!btn) return;
       const code = btn.dataset.code;
+      if (btn.dataset.act === 'note-save') {
+        const card = btn.closest('.rec-card');
+        const ta = card && card.querySelector('.rec-note-text');
+        const msg = card && card.querySelector('.rec-note-msg');
+        if (!ta) return;
+        const old = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Enregistrement...';
+        if (msg) { msg.textContent = ''; msg.className = 'rec-note-msg'; }
+        try {
+          const { data, error } = await window.sb.functions.invoke('live-recording-notes-set', { body: { code, notes: ta.value } });
+          if (!error && data && data.ok) {
+            if (msg) { msg.textContent = 'Enregistré ✓'; msg.className = 'rec-note-msg ok'; }
+          } else {
+            if (msg) { msg.textContent = 'Erreur, réessaie'; msg.className = 'rec-note-msg err'; }
+          }
+        } catch (err) {
+          if (msg) { msg.textContent = 'Erreur, réessaie'; msg.className = 'rec-note-msg err'; }
+        }
+        btn.disabled = false; btn.textContent = old;
+        setTimeout(() => { if (msg) { msg.textContent = ''; msg.className = 'rec-note-msg'; } }, 2600);
+        return;
+      }
       if (btn.dataset.act === 'copy') {
         const link = REPLAY_BASE + code;
         try { await navigator.clipboard.writeText(link); btn.textContent = 'Lien copié !'; }
