@@ -41,6 +41,8 @@
           if (!el) return;
           el.classList.toggle('active', name === target);
         });
+        // on est dans une sous-vue vidéo -> le bouton du haut "Vidéo" redevient actif (pas "Enregistrement live")
+        document.querySelectorAll('#media-switch .media-btn').forEach((b) => b.classList.toggle('active', b.dataset.media === 'video'));
 
         // Chargements paresseux à la 1re ouverture
         if (target === 'recordings') renderRecordings();
@@ -55,6 +57,18 @@
         }
       });
     });
+
+    // Bouton "Enregistrement live" dans la rangée du haut (à côté de Vidéo / Photo / Images / Vidéo IA)
+    const topRec = document.getElementById('media-recordings');
+    if (topRec) {
+      topRec.addEventListener('click', () => {
+        if (typeof setMediaType === 'function') setMediaType('video'); // contexte vidéo, où vit la vue
+        Object.entries(views).forEach(([name, el]) => { if (el) el.classList.toggle('active', name === 'recordings'); });
+        tabs.forEach((t) => t.classList.remove('active'));
+        document.querySelectorAll('#media-switch .media-btn').forEach((b) => b.classList.toggle('active', b === topRec));
+        renderRecordings();
+      });
+    }
   }
 
   // ------------------------------------------------------------

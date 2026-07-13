@@ -1518,6 +1518,7 @@ body[data-media="image"] .photo-only { display: none; }
       <button class="media-btn" data-media="photo">📷 Photo</button>
       <button class="media-btn" data-media="image">✨ Images</button>
       <button class="media-btn" data-media="videoia">🎥 Vidéo IA</button>
+      <button class="media-btn" id="media-recordings" title="Les replays de tes lives ISIS">🔴 Enregistrement live</button>
     </div>
     <button class="sel-toggle" id="sel-flag" type="button" title="Marquer les cartes cochées (✓) comme sélection à signaler">📌 Signaler les cochées</button>
     <button class="sel-toggle" id="sel-view" type="button" title="N'afficher que ma sélection signalée">👁️ Ma sélection <span id="sel-count"></span></button>
@@ -1527,7 +1528,6 @@ body[data-media="image"] .photo-only { display: none; }
   <nav class="view-tabs" id="view-tabs">
     <button class="view-tab active" data-view="gallery">Galerie</button>
     <button class="view-tab" data-view="montees">Montées</button>
-    <button class="view-tab" data-view="recordings">Enregistrements</button>
     <button class="view-tab" data-view="faces">Visages</button>
     <button class="view-tab" data-view="ai">Analyse IA</button>
     <button class="view-tab" data-view="dupes">Doublons</button>
@@ -2129,7 +2129,7 @@ body[data-media="image"] .photo-only { display: none; }
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <datalist id="participantes-list"></datalist>
 <datalist id="salles-list"></datalist>
-<script src="app.js?v=20260713a"></script>
-<script src="admin.js?v=20260713a"></script>
+<script src="app.js?v=20260713b"></script>
+<script src="admin.js?v=20260713b"></script>
 </body>
 </html>
