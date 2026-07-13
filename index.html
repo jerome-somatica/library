@@ -1454,6 +1454,30 @@ body[data-media="image"] .photo-only { display: none; }
   transition: background 0.15s;
 }
 .montee-actions a:hover { background: rgba(235,211,160,0.18); }
+/* ===== Onglet Enregistrements (replays des lives) ===== */
+.rec-wrap { padding: 20px; max-width: 1200px; margin: 0 auto; }
+.rec-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.rec-head h2 { font-size: 18px; font-weight: 600; color: #ebd3a0; margin: 0; }
+.rec-head .rec-count { color: rgba(235,211,160,0.6); font-size: 13px; }
+.rec-refresh { margin-left: auto; background: rgba(235,211,160,0.08); border: 1px solid rgba(235,211,160,0.25); color: #ebd3a0; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+.rec-refresh:hover { background: rgba(235,211,160,0.15); }
+.rec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.rec-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(235,211,160,0.14); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+.rec-thumb-link { display: block; text-decoration: none; }
+.rec-thumb { position: relative; aspect-ratio: 16 / 9; background: #14100c center / cover no-repeat; display: flex; align-items: center; justify-content: center; }
+.rec-thumb .rec-play { width: 46px; height: 46px; border-radius: 50%; background: rgba(0,0,0,0.5); border: 1px solid rgba(235,211,160,0.5); color: #ebd3a0; display: flex; align-items: center; justify-content: center; font-size: 17px; }
+.rec-thumb-empty { color: rgba(235,211,160,0.35); font-size: 30px; }
+.rec-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.rec-title { font-weight: 600; color: #f3e9d4; font-size: 15px; line-height: 1.3; }
+.rec-date { color: rgba(235,211,160,0.55); font-size: 12px; }
+.rec-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.rec-btn { flex: 1; min-width: 88px; text-align: center; text-decoration: none; border-radius: 8px; padding: 8px 10px; font-size: 13px; cursor: pointer; border: 1px solid rgba(235,211,160,0.25); background: rgba(235,211,160,0.06); color: #ebd3a0; transition: background .12s; }
+.rec-btn:hover { background: rgba(235,211,160,0.15); }
+.rec-btn.primary { background: #ebd3a0; color: #1a1510; border-color: #ebd3a0; font-weight: 600; }
+.rec-btn.primary:hover { background: #f0dcae; }
+.rec-btn:disabled { opacity: 0.6; cursor: default; }
+.rec-empty, .rec-loading { text-align: center; color: rgba(235,211,160,0.5); padding: 50px 20px; font-size: 14px; grid-column: 1 / -1; }
+.rec-empty small { display: block; margin-top: 8px; color: rgba(235,211,160,0.35); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -1503,6 +1527,7 @@ body[data-media="image"] .photo-only { display: none; }
   <nav class="view-tabs" id="view-tabs">
     <button class="view-tab active" data-view="gallery">Galerie</button>
     <button class="view-tab" data-view="montees">Montées</button>
+    <button class="view-tab" data-view="recordings">Enregistrements</button>
     <button class="view-tab" data-view="faces">Visages</button>
     <button class="view-tab" data-view="ai">Analyse IA</button>
     <button class="view-tab" data-view="dupes">Doublons</button>
@@ -2005,6 +2030,19 @@ body[data-media="image"] .photo-only { display: none; }
     </div>
   </div><!-- /#view-dupes -->
 
+  <div class="view" id="view-recordings">
+    <div class="rec-wrap">
+      <div class="rec-head">
+        <h2>Enregistrements des lives</h2>
+        <span class="rec-count" id="rec-count"></span>
+        <button class="rec-refresh" id="rec-refresh">↻ Actualiser</button>
+      </div>
+      <div class="rec-grid" id="rec-grid">
+        <div class="rec-loading">Chargement...</div>
+      </div>
+    </div>
+  </div><!-- /#view-recordings -->
+
   <div class="view" id="view-maintenance">
     <div class="maint-wrap">
       <div class="worker-offline" id="worker-offline" style="display:none">
@@ -2091,7 +2129,7 @@ body[data-media="image"] .photo-only { display: none; }
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <datalist id="participantes-list"></datalist>
 <datalist id="salles-list"></datalist>
-<script src="app.js?v=20260621g"></script>
-<script src="admin.js?v=20260621g"></script>
+<script src="app.js?v=20260713a"></script>
+<script src="admin.js?v=20260713a"></script>
 </body>
 </html>

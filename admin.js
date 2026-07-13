@@ -26,6 +26,7 @@
     const views = {
       gallery: $('#view-gallery'),
       montees: $('#view-montees'),
+      recordings: $('#view-recordings'),
       faces: $('#view-faces'),
       ai: $('#view-ai'),
       dupes: $('#view-dupes'),
@@ -42,6 +43,7 @@
         });
 
         // Chargements paresseux à la 1re ouverture
+        if (target === 'recordings') renderRecordings();
         if (target === 'montees') renderMontees();
         if (target === 'faces') renderFaces();
         if (target === 'dupes') renderDupes();
@@ -52,6 +54,145 @@
           if (typeof stopGeminiPolling === 'function') stopGeminiPolling();
         }
       });
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Onglet Enregistrements (replays des lives ISIS)
+  // ------------------------------------------------------------
+  const REPLAY_BASE = 'https://isis.somatica.fr/replay/';
+  const ISIS_BASE = 'https://isis.somatica.fr';
+
+  function recEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+  function recResolveCover(url) {
+    if (!url) return null;
+    if (/^https?:\/\//i.test(url)) return url;
+    return ISIS_BASE + (url.charAt(0) === '/' ? url : '/' + url);
+  }
+  function recFmtDate(iso) {
+    try { return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }); }
+    catch (e) { return ''; }
+  }
+
+  async function recFetchList() {
+    // Le compte Library n'est pas forcement le facilitateur ISIS : on passe par l'Edge de
+    // listing (service role, cote serveur). Repli sur la requete directe si les comptes s'alignent.
+    try {
+      const { data, error } = await window.sb.functions.invoke('live-recordings-list', { body: {} });
+      if (!error && data && Array.isArray(data.recordings)) return data.recordings;
+    } catch (e) {}
+    try {
+      const { data } = await window.sb
+        .from('live_sessions')
+        .select('code, title, seance_id, created_at, recording_filepath')
+        .not('recording_filepath', 'is', null)
+        .is('recording_egress_id', null)
+        .order('created_at', { ascending: false });
+      if (!data || !data.length) return [];
+      const ids = [...new Set(data.map((r) => r.seance_id).filter(Boolean))];
+      const seances = {};
+      if (ids.length) {
+        const { data: sd } = await window.sb
+          .from('lecteur_seances')
+          .select('id, display_title, title, cover_url')
+          .in('id', ids);
+        (sd || []).forEach((s) => { seances[s.id] = s; });
+      }
+      return data.map((r) => {
+        const s = seances[r.seance_id] || {};
+        return {
+          code: r.code,
+          created_at: r.created_at,
+          title: r.title || s.display_title || s.title || 'Séance',
+          cover_url: s.cover_url || null,
+        };
+      });
+    } catch (e) { return []; }
+  }
+
+  function recCardHtml(r) {
+    const cover = recResolveCover(r.cover_url);
+    const replay = REPLAY_BASE + encodeURIComponent(r.code);
+    const thumb = cover
+      ? `<div class="rec-thumb" style="background-image:url('${cover.replace(/['"\\]/g, '')}')"><span class="rec-play">▶</span></div>`
+      : `<div class="rec-thumb"><span class="rec-thumb-empty">🎥</span></div>`;
+    return `<div class="rec-card" data-code="${recEsc(r.code)}">
+      <a href="${replay}" target="_blank" rel="noopener" class="rec-thumb-link">${thumb}</a>
+      <div class="rec-body">
+        <div class="rec-title">${recEsc(r.title)}</div>
+        <div class="rec-date">${recFmtDate(r.created_at)}</div>
+        <div class="rec-actions">
+          <a class="rec-btn primary" href="${replay}" target="_blank" rel="noopener">Regarder</a>
+          <button class="rec-btn" data-act="copy" data-code="${recEsc(r.code)}">Copier le lien</button>
+          <button class="rec-btn" data-act="dl" data-code="${recEsc(r.code)}">Télécharger</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  let recLoading = false;
+  async function renderRecordings() {
+    const grid = $('#rec-grid');
+    if (!grid || recLoading) return;
+    recLoading = true;
+    grid.innerHTML = '<div class="rec-loading">Chargement...</div>';
+    let rows = [];
+    try { rows = await recFetchList(); } catch (e) { rows = []; }
+    recLoading = false;
+    const cnt = $('#rec-count');
+    if (!rows.length) {
+      if (cnt) cnt.textContent = '';
+      grid.innerHTML = '<div class="rec-empty">Aucun enregistrement disponible pour le moment.<small>Les lives que tu enregistres apparaîtront ici.</small></div>';
+      return;
+    }
+    if (cnt) cnt.textContent = rows.length + (rows.length > 1 ? ' enregistrements' : ' enregistrement');
+    grid.innerHTML = rows.map(recCardHtml).join('');
+  }
+
+  function setupRecordings() {
+    const refresh = $('#rec-refresh');
+    if (refresh) refresh.addEventListener('click', () => { recLoading = false; renderRecordings(); });
+    // Actions copier / telecharger (delegation, une seule fois)
+    document.addEventListener('click', async (e) => {
+      const btn = e.target.closest('#view-recordings .rec-btn[data-act]');
+      if (!btn) return;
+      const code = btn.dataset.code;
+      if (btn.dataset.act === 'copy') {
+        const link = REPLAY_BASE + code;
+        try { await navigator.clipboard.writeText(link); btn.textContent = 'Lien copié !'; }
+        catch (err) { btn.textContent = 'Copie impossible'; }
+        setTimeout(() => { btn.textContent = 'Copier le lien'; }, 1600);
+        return;
+      }
+      if (btn.dataset.act === 'dl') {
+        const old = btn.textContent;
+        btn.textContent = 'Préparation...'; btn.disabled = true;
+        try {
+          const resp = await fetch(`${window.SUPABASE_URL}/functions/v1/live-replay`, {
+            method: 'POST',
+            headers: { apikey: window.SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code }),
+          });
+          const j = await resp.json();
+          if (j && j.ready && j.url) {
+            const a = document.createElement('a');
+            a.href = j.url;
+            a.download = (j.title || 'enregistrement') + '.mp4';
+            a.target = '_blank'; a.rel = 'noopener';
+            document.body.appendChild(a); a.click(); a.remove();
+            btn.textContent = old;
+          } else if (j && j.recording) {
+            btn.textContent = 'Encore en cours'; setTimeout(() => { btn.textContent = old; }, 1800);
+          } else {
+            btn.textContent = 'Indisponible'; setTimeout(() => { btn.textContent = old; }, 1800);
+          }
+        } catch (err) {
+          btn.textContent = 'Erreur'; setTimeout(() => { btn.textContent = old; }, 1800);
+        }
+        btn.disabled = false;
+      }
     });
   }
 
@@ -1387,6 +1528,7 @@
   function init() {
     if (!$('#view-tabs')) return; // Pas la bonne page
     setupTabs();
+    setupRecordings();
     setupMaintenanceHandlers();
     setupMonteesFilters();
   }
