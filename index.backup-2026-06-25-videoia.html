@@ -1,0 +1,2094 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0d1e25">
+<title>Somatica Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: 'Inter', sans-serif; background: #0d1e25; color: #ebd3a0; min-height: 100vh; }
+body { padding-bottom: 140px; }
+
+/* Header */
+header {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(13, 30, 37, 0.95); backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(235, 211, 160, 0.15);
+  padding: 14px 20px;
+}
+header .title {
+  font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 500;
+  display: flex; align-items: center; gap: 10px;
+}
+header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
+
+/* Picker banner : mode sélecteur depuis SomaticaEdit */
+.picker-banner {
+  display: none;
+  position: sticky; top: 0; z-index: 60;
+  background: linear-gradient(90deg, rgba(120,160,220,0.95), rgba(168,192,226,0.95));
+  color: #0a1a2e;
+  padding: 10px 20px;
+  font-size: 13px; font-weight: 500;
+  align-items: center; gap: 14px;
+  border-bottom: 1px solid rgba(10,26,46,0.2);
+}
+.picker-banner .pb-icon { font-size: 18px; }
+.picker-banner .pb-text { flex: 1; line-height: 1.35; }
+.picker-banner .pb-id {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  background: rgba(10,26,46,0.12);
+  padding: 2px 6px; border-radius: 4px;
+  font-weight: 600;
+}
+.picker-banner .pb-hint { opacity: 0.75; font-size: 12px; }
+.picker-banner .pb-cancel {
+  background: rgba(10,26,46,0.12); color: #0a1a2e;
+  border: none; border-radius: 6px;
+  padding: 6px 12px; font-size: 12px; font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+}
+.picker-banner .pb-cancel:hover { background: rgba(10,26,46,0.2); }
+
+/* Filters bar */
+.filters {
+  background: rgba(13, 30, 37, 0.95);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(235, 211, 160, 0.1);
+}
+/* Sur desktop, header + filtres restent fixés en haut, seule la galerie scrolle */
+@media (min-width: 768px) {
+  .filters {
+    position: sticky;
+    top: 52px; /* hauteur approx du header (padding 14px + title ~24px) */
+    z-index: 49;
+  }
+}
+.filters-row {
+  padding: 10px 20px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+.filters-row + .filters-row { border-top: 1px dashed rgba(235, 211, 160, 0.08); }
+.filters input, .filters select {
+  background: rgba(235, 211, 160, 0.08); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.15);
+  padding: 7px 11px; border-radius: 6px; font-size: 13px; font-family: inherit;
+  outline: none; transition: border-color 0.15s;
+}
+.filters input:focus, .filters select:focus { border-color: #ebd3a0; }
+.filters input::placeholder { color: rgba(235, 211, 160, 0.5); }
+.filters input[type="search"] { flex: 1; min-width: 180px; }
+.filters .count-filtered {
+  font-size: 12px; opacity: 0.75; margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.filters .count-filtered b { color: #ebd3a0; font-weight: 600; }
+
+/* Chip group (toggles) */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(235, 211, 160, 0.06);
+  border: 1px solid rgba(235, 211, 160, 0.15);
+  color: rgba(235, 211, 160, 0.75);
+  padding: 6px 11px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: all 0.15s; user-select: none;
+}
+.chip:hover { border-color: rgba(235, 211, 160, 0.35); color: #ebd3a0; }
+.chip.active {
+  background: #ebd3a0; color: #0f2f3a;
+  border-color: #ebd3a0;
+}
+.chip.primary-chip {
+  background: rgba(235, 211, 160, 0.12);
+  border-color: rgba(235, 211, 160, 0.3);
+  color: #ebd3a0;
+}
+.chip.primary-chip.active {
+  background: #a8e6a8; border-color: #a8e6a8; color: #0a2a0a;
+}
+
+/* Quality slider */
+.slider-wrap {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(235, 211, 160, 0.06);
+  border: 1px solid rgba(235, 211, 160, 0.15);
+  padding: 5px 12px; border-radius: 20px;
+  font-size: 12px;
+}
+.slider-wrap label { color: rgba(235,211,160,0.7); font-weight: 500; }
+.slider-wrap input[type="range"] {
+  width: 90px; accent-color: #ebd3a0;
+  background: transparent; border: 0; padding: 0;
+}
+.slider-wrap .val {
+  color: #ebd3a0; font-weight: 600; min-width: 24px; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Multi-select container */
+.multi-select {
+  position: relative;
+  display: inline-block;
+}
+.multi-select-btn {
+  background: rgba(235, 211, 160, 0.08);
+  border: 1px solid rgba(235, 211, 160, 0.15);
+  color: #ebd3a0;
+  padding: 7px 11px; border-radius: 6px; font-size: 13px;
+  cursor: pointer; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.multi-select-btn:hover { border-color: rgba(235, 211, 160, 0.35); }
+.multi-select-btn .caret { font-size: 9px; opacity: 0.6; }
+.multi-select-btn.has-selection {
+  background: rgba(235, 211, 160, 0.18);
+  border-color: #ebd3a0;
+}
+.multi-select-panel {
+  display: none;
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 30;
+  min-width: 220px; max-width: 320px; max-height: 280px; overflow-y: auto;
+  background: #0f2f3a; border: 1px solid rgba(235, 211, 160, 0.25);
+  border-radius: 8px; padding: 6px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+}
+.multi-select.open .multi-select-panel { display: block; }
+.multi-select-panel .opt {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 4px; cursor: pointer;
+  font-size: 13px; color: rgba(235, 211, 160, 0.85);
+  transition: background 0.1s;
+}
+.multi-select-panel .opt:hover { background: rgba(235, 211, 160, 0.08); }
+.multi-select-panel .opt.selected { color: #ebd3a0; background: rgba(235, 211, 160, 0.12); }
+.multi-select-panel .opt .tick {
+  width: 14px; height: 14px; border-radius: 3px;
+  border: 1.5px solid rgba(235, 211, 160, 0.4);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: bold;
+}
+.multi-select-panel .opt.selected .tick {
+  background: #ebd3a0; border-color: #ebd3a0; color: #0f2f3a;
+}
+.multi-select-panel .opt .cnt { margin-left: auto; opacity: 0.5; font-size: 11px; }
+
+/* Reset button */
+.btn-reset {
+  background: transparent; color: rgba(235, 211, 160, 0.7);
+  border: 1px dashed rgba(235, 211, 160, 0.25);
+  padding: 6px 11px; border-radius: 6px; font-size: 12px;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.btn-reset:hover { color: #ebd3a0; border-color: #ebd3a0; border-style: solid; }
+
+/* Zoom control (molette largeur de grille) */
+.zoom-control {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(235,211,160,0.08);
+  border: 1px solid rgba(235,211,160,0.12);
+  border-radius: 8px; padding: 4px 10px;
+}
+.zoom-control input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 120px; height: 4px; border-radius: 999px;
+  background: rgba(235,211,160,0.25); cursor: pointer; margin: 0;
+}
+.zoom-control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: #ebd3a0; border: 0; cursor: pointer;
+}
+.zoom-control input[type="range"]::-moz-range-thumb {
+  width: 15px; height: 15px; border-radius: 50%;
+  background: #ebd3a0; border: 0; cursor: pointer;
+}
+.zoom-control .cols-val {
+  color: #ebd3a0; font-size: 12px; font-weight: 700;
+  min-width: 16px; text-align: center; font-variant-numeric: tabular-nums;
+}
+@media (max-width: 767px) { .zoom-control input[type="range"] { width: 90px; } }
+
+/* Gallery grid — piloté par --cols */
+:root { --cols: 3; --gap: 12px; }
+@media (max-width: 767px) { :root { --cols: 2; --gap: 8px; } }
+
+.gallery {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), 1fr);
+  gap: var(--gap);
+  touch-action: pan-y;
+}
+@media (min-width: 768px) {
+  .gallery { padding: 20px; --gap: 14px; }
+}
+
+.gallery[data-dense="1"] .card .info { padding: 6px 8px; font-size: 11px; }
+.gallery[data-dense="1"] .card .info .meta { display: none; }
+.gallery[data-dense="2"] .card .info { display: none; }
+.gallery[data-dense="2"] .card .status-badge { font-size: 8px; padding: 1px 5px; }
+.gallery[data-dense="2"] .card .duration { font-size: 9px; padding: 1px 5px; }
+.gallery[data-dense="2"] .card .select-checkbox { width: 20px; height: 20px; }
+
+/* Empêche la sélection de texte parasite au shift+clic dans la grille (commentaire reste éditable) */
+.gallery { -webkit-user-select: none; user-select: none; }
+.gallery input, .gallery textarea { -webkit-user-select: text; user-select: text; }
+
+.card {
+  position: relative; background: #0f2f3a; border-radius: 10px; overflow: hidden;
+  cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+  border: 2px solid transparent;
+}
+.card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.4); }
+.card.selected { border-color: #ebd3a0; box-shadow: 0 0 0 2px rgba(235, 211, 160, 0.4); }
+.card.archived { opacity: 0.45; }
+.card.rejected { opacity: 0.35; filter: grayscale(0.8); }
+
+.card .thumb {
+  width: 100%; aspect-ratio: 9/16; background: #000;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px; color: rgba(235,211,160,0.25);
+  position: relative;
+}
+.card .thumb img, .card .thumb video {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.card .thumb img { display: block; background: #000; }
+/* La vidéo d'aperçu ne capte pas les clics : le tap sur l'image ouvre toujours la lecture */
+.card .thumb video { pointer-events: none; }
+.card .thumb .preview-canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; pointer-events: none; background: #000; }
+.card .thumb .play-icon {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 48px; height: 48px; border-radius: 50%;
+  background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
+  pointer-events: auto; cursor: pointer;
+}
+.card .thumb .play-icon::after {
+  content: ''; display: block;
+  border-left: 14px solid #ebd3a0;
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  margin-left: 4px;
+}
+.card .duration {
+  position: absolute; bottom: 8px; right: 8px;
+  background: rgba(0,0,0,0.75); color: #ebd3a0;
+  padding: 2px 6px; border-radius: 4px;
+  font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.card .usable-badge {
+  position: absolute; bottom: 8px; left: 8px;
+  background: rgba(168, 230, 168, 0.9); color: #0a2a0a;
+  padding: 2px 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+}
+.card .usage-badge {
+  position: absolute; top: 32px; left: 8px;
+  background: rgba(120, 160, 220, 0.92); color: #0a1a2e;
+  padding: 2px 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+  cursor: help;
+}
+.card .quality-score {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(0,0,0,0.75); color: #ebd3a0;
+  padding: 2px 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 600;
+}
+.card .status-badge {
+  position: absolute; top: 32px; right: 8px;
+  padding: 2px 8px; border-radius: 4px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.card .status-badge.pending { background: rgba(255, 200, 100, 0.85); color: #3a2a10; }
+.card .status-badge.in_progress { background: rgba(100, 180, 255, 0.85); color: #0a1d2a; }
+.card .status-badge.done { display: none; }
+.card .status-badge.failed { background: rgba(255, 100, 100, 0.85); color: #3a0a0a; }
+.card .thumb .codec-badge {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+  background: rgba(217,138,138,0.92); color: #3a0a0a; z-index: 3;
+  padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+}
+.card .info {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.card .info .amb { color: #ebd3a0; font-weight: 500; text-transform: capitalize; }
+.card .info .meta { color: rgba(235,211,160,0.55); font-size: 11px; margin-top: 2px; }
+
+/* Selection checkbox overlay */
+.card .select-checkbox {
+  position: absolute; top: 8px; left: 8px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(0,0,0,0.5); border: 2px solid #ebd3a0;
+  display: flex; align-items: center; justify-content: center;
+  color: #ebd3a0; font-size: 14px; font-weight: bold;
+  cursor: pointer;
+  transition: all 0.15s;
+  z-index: 2;
+}
+.card.selected .select-checkbox { background: #ebd3a0; color: #0f2f3a; }
+
+/* ---------- Mode Tri ---------- */
+.btn-tri-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border-radius: 8px;
+  background: transparent; color: #ebd3a0;
+  border: 1px solid rgba(235,211,160,0.35);
+  font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.btn-tri-toggle:hover { background: rgba(235,211,160,0.1); }
+.btn-tri-toggle.active { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+
+.tri-bar { display: none; align-items: center; gap: 16px; flex-wrap: wrap; padding: 8px 0 2px; }
+body.tri-on .tri-bar { display: flex; }
+.tri-bar .tri-hide { display: flex; align-items: center; gap: 7px; color: #ebd3a0; font-size: 13px; cursor: pointer; }
+.tri-bar .tri-hide input { width: 16px; height: 16px; accent-color: #ebd3a0; }
+.tri-bar .tri-progress { color: rgba(235,211,160,0.6); font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; }
+
+.card .tri-panel { display: none; }
+body.tri-on .card .tri-panel {
+  display: block; padding: 8px 10px 10px;
+  border-top: 1px solid rgba(235,211,160,0.15);
+  background: #0c2630;
+}
+/* Grille dense (plus de 4 colonnes) : vignettes nues, on tague via la barre du bas commune */
+body.tri-on.tri-dense .card .tri-panel { display: none; }
+body.tri-on.tri-dense .card { cursor: pointer; }
+body.tri-on .card.tri-ok { border-color: #7fc77f; box-shadow: 0 0 0 2px rgba(127,199,127,0.4); }
+body.tri-on .card.tri-refuse { border-color: #d98a8a; opacity: 0.5; }
+body.tri-on .card.tri-bug { border-color: #e0b070; box-shadow: 0 0 0 2px rgba(224,176,112,0.4); }
+.tri-panel .tri-row { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; flex-wrap: wrap; }
+.tri-panel .tri-row .tri-note { flex: 1; width: auto; min-width: 90px; margin-bottom: 0; }
+.tri-status-btn {
+  flex: 1; padding: 11px 0; border-radius: 8px;
+  border: 1px solid rgba(235,211,160,0.3); background: transparent;
+  color: #ebd3a0; font-size: 14px; font-weight: 500; cursor: pointer;
+}
+.tri-status-btn.ok.on { background: #7fc77f; color: #093009; border-color: #7fc77f; }
+.tri-status-btn.refuse.on { background: #d98a8a; color: #3a0a0a; border-color: #d98a8a; }
+.tri-status-btn.bug.on { background: #e0b070; color: #3a2600; border-color: #e0b070; }
+.tri-comment-row { display: flex; gap: 8px; align-items: stretch; margin-bottom: 4px; }
+.tri-comment-row .tri-comment { flex: 1; margin-bottom: 0; }
+.tri-comment-row .tri-status-btn.bug { flex: 0 0 auto; padding: 0 16px; }
+.tri-stars { display: flex; flex-wrap: nowrap; gap: 1px; cursor: pointer; flex-shrink: 0; }
+.tri-stars .st { font-size: 19px; line-height: 1; color: #ebd3a0; opacity: 0.35; padding: 2px 3px; }
+.tri-stars .st.on { opacity: 1; }
+.tri-rating-val { color: #ebd3a0; font-size: 12px; font-weight: 600; margin-left: 6px; align-self: center; font-variant-numeric: tabular-nums; }
+.tri-group-label { color: rgba(235,211,160,0.5); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin: 2px 0 4px; }
+.tri-tags .tg-innerdance, .tri-tags .tg-breathwork, .tri-tags .tg-qi_cleansing, .tri-tags .tg-cacao { color: #b7d8c9; }
+.tri-participante { margin-top: 2px; }
+.tri-note {
+  width: 100%; box-sizing: border-box; margin-bottom: 7px;
+  background: rgba(0,0,0,0.25); border: 1px solid rgba(235,211,160,0.2);
+  border-radius: 6px; color: #f3e6c8; font-size: 12px; padding: 6px 8px;
+}
+.tri-note::placeholder { color: rgba(235,211,160,0.4); }
+.tri-field {
+  width: 100%; box-sizing: border-box; margin-bottom: 4px;
+  background: rgba(0,0,0,0.22); border: 1px solid rgba(235,211,160,0.25);
+  border-radius: 10px; color: #f3e6c8; font-size: 13px; padding: 10px 11px;
+}
+.tri-field::placeholder { color: rgba(235,211,160,0.4); }
+.tri-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 4px; }
+.tri-chip {
+  padding: 8px 13px; border-radius: 999px; line-height: 1;
+  border: 1px solid rgba(235,211,160,0.32); background: transparent;
+  color: #ebd3a0; font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.tri-chip:hover { background: rgba(235,211,160,0.08); }
+.tri-chip.on { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+.tri-chip.g2.on { background: #9cc6dd; border-color: #9cc6dd; color: #06283a; }
+.tri-chip.g3.on { background: #9fd9c4; border-color: #9fd9c4; color: #06322a; }
+.tri-chip.g4.on { background: #d8b6d6; border-color: #d8b6d6; color: #2c0f2a; }
+.tri-sep { height: 1px; background: rgba(235,211,160,0.12); margin: 9px 0; }
+.tri-toprow { flex-wrap: wrap; }
+.tri-toprow .tri-participante { flex: 1; min-width: 150px; margin-bottom: 0; }
+.tri-tags { display: flex; flex-wrap: wrap; gap: 5px 10px; }
+.tri-tags label { display: flex; align-items: center; gap: 4px; font-size: 11px; color: rgba(235,211,160,0.85); cursor: pointer; }
+.tri-tags input { width: 14px; height: 14px; accent-color: #ebd3a0; }
+.tri-tags .tg-nathalie_sol { color: #e8b0b0; }
+.tri-tags .tg-deja_monte { color: #a9d5e8; }
+.tri-tags .tg-texte_incruste { color: #d9b8e8; }
+.tri-tags .tg-son_origine { color: #e8d59a; }
+/* Le rond ▶ reste visible : c'est le bouton "ouvrir le lecteur" (surtout en mode tri) */
+/* Réglette d'aperçu en overlay bas de vignette, visible seulement en Mode tri */
+.card .thumb .scrub { display: none; }
+body.tri-on .card .thumb .scrub {
+  display: block; position: absolute; left: 5px; right: 5px; bottom: 5px; width: auto;
+  margin: 0; z-index: 5; height: 16px; cursor: pointer; accent-color: #ebd3a0;
+  background: rgba(0,0,0,0.4); border-radius: 8px;
+}
+body.tri-on .card .thumb .duration,
+body.tri-on .card .thumb .usable-badge { display: none; }
+
+/* Overlay des tags sur la vignette (visible en mode tri) */
+.card-tags { display: none; }
+body.tri-on .card-tags {
+  display: flex; flex-wrap: wrap; gap: 3px;
+  position: absolute; left: 4px; top: 4px; right: 30px; z-index: 3;
+  pointer-events: none;
+}
+.card-tags .ct {
+  font-size: 9px; line-height: 1.1; padding: 2px 5px; border-radius: 999px;
+  background: rgba(13,30,37,0.8); color: #ebd3a0; font-weight: 700;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.card-tags .ct.ct-facil { background: rgba(216,182,214,0.94); color: #2c0f2a; }
+.card-tags .ct.ct-ctx { background: rgba(156,198,221,0.5); color: #ebd3a0; }
+.card-tags .ct.ct-prat { background: rgba(159,217,196,0.94); color: #06322a; }
+.card-tags .ct.ct-part { background: rgba(235,211,160,0.94); color: #0f2f3a; }
+.card-tags .ct.ct-salle { background: rgba(156,198,221,0.94); color: #06283a; }
+.gallery[data-dense="2"] .card-tags .ct { font-size: 8px; padding: 1px 4px; }
+
+/* Sentinel (infinite scroll trigger) */
+.sentinel {
+  grid-column: 1 / -1;
+  padding: 30px 10px; text-align: center;
+  color: rgba(235,211,160,0.5); font-size: 13px; font-style: italic;
+}
+
+/* Modal */
+.modal-bg {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.95);
+  display: none; z-index: 100; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-bg.active { display: flex; }
+.modal {
+  background: #0f2f3a; border-radius: 14px; max-width: 720px; width: 100%;
+  max-height: 90vh; overflow: auto;
+  border: 1px solid rgba(235,211,160,0.2);
+}
+.modal-header { padding: 16px 20px; border-bottom: 1px solid rgba(235,211,160,0.1); display: flex; justify-content: space-between; align-items: center; }
+.modal-header h2 { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 500; }
+.modal-header .close {
+  background: none; border: none; color: #ebd3a0; font-size: 28px; cursor: pointer;
+  width: 36px; height: 36px; border-radius: 50%;
+}
+.modal-header .close:hover { background: rgba(235,211,160,0.1); }
+.modal-video {
+  width: 100%; aspect-ratio: 9/16; max-height: 60vh;
+  background: #000; display: flex; align-items: center; justify-content: center;
+}
+.modal-video video { width: 100%; height: 100%; object-fit: contain; }
+.modal-hevc-notice { width: 100%; min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center; }
+.modal-hevc-notice img { max-width: 160px; max-height: 280px; border-radius: 8px; }
+.modal-hevc-notice .mhn-msg { color: #ebd3a0; font-size: 14px; line-height: 1.5; }
+body.modal-open .gallery { visibility: hidden; }
+.media-switch { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.media-btn { padding: 7px 14px; border-radius: 8px; border: 1px solid rgba(235,211,160,0.3); background: transparent; color: #ebd3a0; font-size: 13px; font-weight: 500; cursor: pointer; }
+.media-btn:hover { background: rgba(235,211,160,0.1); }
+.media-btn.active { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+.sel-toggle { margin-top: 10px; margin-left: 8px; padding: 7px 14px; border-radius: 8px; border: 1px solid rgba(235,211,160,0.3); background: transparent; color: #ebd3a0; font-size: 13px; font-weight: 500; cursor: pointer; }
+.sel-toggle:hover { background: rgba(235,211,160,0.12); }
+.sel-toggle.active { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+.tri-status-btn.flag.on { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+body.media-non-video #view-tabs { display: none; }
+.modal-img { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+.modal-body { padding: 20px; }
+.modal-body .row { display: flex; gap: 12px; margin-bottom: 10px; font-size: 14px; }
+.modal-body .row .label { font-weight: 500; color: rgba(235,211,160,0.6); min-width: 100px; }
+.modal-body .row .value { flex: 1; }
+.modal-body textarea, .modal-body input {
+  width: 100%; background: rgba(235, 211, 160, 0.08); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.15);
+  padding: 8px 10px; border-radius: 6px; font-size: 14px; font-family: inherit;
+  outline: none;
+}
+.modal-body textarea { min-height: 60px; resize: vertical; }
+.modal-actions { padding: 14px 20px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; border-top: 1px solid rgba(235,211,160,0.1); }
+button.btn {
+  background: rgba(235, 211, 160, 0.1); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.25); cursor: pointer;
+  padding: 9px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  font-family: inherit; transition: all 0.15s;
+}
+button.btn:hover { background: rgba(235, 211, 160, 0.2); border-color: rgba(235, 211, 160, 0.4); }
+button.btn.primary { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+button.btn.primary:hover { background: #d6be8c; }
+button.btn.danger { color: #ff9a9a; border-color: rgba(255, 150, 150, 0.3); }
+button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
+
+/* Auth screen */
+.auth-screen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.auth-box {
+  background: #0f2f3a; padding: 40px 30px; border-radius: 14px;
+  max-width: 420px; width: 100%; border: 1px solid rgba(235,211,160,0.15);
+}
+.auth-box h1 {
+  font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 500; margin-bottom: 8px;
+}
+.auth-box p.subtitle { color: rgba(235,211,160,0.6); margin-bottom: 24px; font-size: 14px; }
+.auth-box input { width: 100%; margin-bottom: 14px; padding: 12px 14px; font-size: 15px;
+  background: rgba(235, 211, 160, 0.08); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.15); border-radius: 8px; outline: none;
+}
+.auth-box button { width: 100%; padding: 12px; font-size: 15px; font-weight: 500;
+  background: #ebd3a0; color: #0f2f3a; border: none; border-radius: 8px; cursor: pointer;
+}
+.auth-box button:hover { background: #d6be8c; }
+.auth-box .msg { font-size: 13px; margin-top: 14px; color: rgba(235,211,160,0.7); text-align: center; }
+.auth-box .msg.error { color: #ff9a9a; }
+
+/* Selection bar (bottom) */
+.selection-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: rgba(13, 30, 37, 0.98); backdrop-filter: blur(10px);
+  border-top: 2px solid #ebd3a0;
+  padding: 14px 20px; display: none; z-index: 40;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+}
+.selection-bar.active { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.selection-bar .count { font-weight: 600; font-size: 16px; }
+.selection-bar .meta { opacity: 0.7; font-size: 13px; }
+.selection-bar .actions { margin-left: auto; display: flex; gap: 10px; }
+.selection-bar .btn.danger { border-color: #d98a8a; color: #ecb6b6; }
+.selection-bar .btn.danger:hover { background: rgba(217,138,138,0.18); }
+/* Actions groupées du mode tri (appliquer statut/tags à toute la sélection) */
+.batch-tri { display: none; gap: 5px; flex-wrap: wrap; align-items: center; }
+body.tri-on .selection-bar.active .batch-tri { display: flex; }
+.batch-tri .batch-sep { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(235,211,160,0.5); margin: 0 2px; }
+.batch-btn { padding: 4px 9px; border-radius: 6px; border: 1px solid rgba(235,211,160,0.3); background: transparent; color: #ebd3a0; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.batch-btn:hover { background: rgba(235,211,160,0.1); }
+.batch-btn.ok { border-color: #7fc77f; color: #b6e3b6; }
+.batch-btn.refuse { border-color: #d98a8a; color: #ecb6b6; }
+.batch-btn.bug { border-color: #e0b070; color: #e8c89a; }
+.batch-btn.tag.facil { border-color: #d8b6d6; color: #e6c8e4; }
+.batch-part {
+  padding: 4px 9px; border-radius: 6px; border: 1px solid rgba(235,211,160,0.3);
+  background: rgba(235,211,160,0.06); color: #ebd3a0; font-size: 11px;
+  font-family: inherit; min-width: 120px;
+}
+.batch-part::placeholder { color: rgba(235,211,160,0.4); }
+/* Bouton "tout sélectionner l'affiché" dans la tri-bar */
+.tri-selectall {
+  padding: 4px 11px; border-radius: 6px; border: 1px solid rgba(235,211,160,0.32);
+  background: transparent; color: #ebd3a0; font-size: 12px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+}
+.tri-selectall:hover { background: rgba(235,211,160,0.1); }
+
+/* Loading */
+.loading {
+  text-align: center; padding: 60px 20px; color: rgba(235,211,160,0.5);
+  font-style: italic;
+}
+
+/* Empty state */
+.empty-state {
+  grid-column: 1 / -1;
+  text-align: center; padding: 80px 20px; color: rgba(235,211,160,0.5);
+}
+.empty-state h2 { font-family: 'Cormorant Garamond', serif; font-size: 24px; margin-bottom: 10px; color: #ebd3a0; }
+
+/* Toast */
+.toast {
+  position: fixed; top: 20px; right: 20px; z-index: 200;
+  background: rgba(15, 47, 58, 0.95); backdrop-filter: blur(10px);
+  border: 1px solid rgba(235, 211, 160, 0.3); border-radius: 8px;
+  padding: 12px 18px; font-size: 14px; color: #ebd3a0;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  animation: slideIn 0.2s ease-out;
+}
+.toast.error { border-color: rgba(255, 150, 150, 0.4); color: #ff9a9a; }
+.toast.success { border-color: rgba(150, 220, 150, 0.4); color: #a8e6a8; }
+@keyframes slideIn { from { transform: translateX(120%); } to { transform: translateX(0); } }
+
+/* ----------- v3 (2026-04-21) : barre compacte + presets + drawer ----------- */
+
+/* Barre principale compacte */
+.filters-main {
+  padding: 10px 20px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+.filters-main input[type="search"] {
+  flex: 1; min-width: 200px;
+}
+
+/* Bouton "Filtres avancés" (ouvre le drawer) */
+.btn-filters-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(235, 211, 160, 0.08);
+  border: 1px solid rgba(235, 211, 160, 0.25);
+  color: #ebd3a0;
+  padding: 7px 13px; border-radius: 6px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  font-family: inherit; transition: all 0.15s;
+  position: relative;
+}
+.btn-filters-toggle:hover { border-color: #ebd3a0; background: rgba(235,211,160,0.14); }
+.btn-filters-toggle .badge {
+  background: #ebd3a0; color: #0f2f3a;
+  border-radius: 999px; font-size: 10px; font-weight: 700;
+  padding: 1px 6px; min-width: 16px; text-align: center;
+}
+
+/* Presets row */
+.presets-row {
+  display: flex; flex-wrap: nowrap; gap: 6px; align-items: center;
+  padding: 6px 20px 8px 20px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  border-top: 1px dashed rgba(235, 211, 160, 0.08);
+}
+.presets-row::-webkit-scrollbar { height: 4px; }
+.presets-row::-webkit-scrollbar-thumb { background: rgba(235,211,160,0.2); border-radius: 2px; }
+/* Filtres adaptés aux photos / images (affichés en mode non-vidéo à la place des presets Reel) */
+.photo-filters-row {
+  display: none; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 6px 20px 8px 20px; overflow-x: auto;
+  border-top: 1px dashed rgba(235, 211, 160, 0.08);
+}
+.photo-filters-row select { font-size: 12px; padding: 5px 8px; }
+body.media-non-video #presets-row { display: none; }
+body.media-non-video #photo-filters-row { display: flex; }
+body[data-media="image"] .photo-only { display: none; }
+@media (max-width: 767px) { .photo-filters-row { padding: 6px 14px 8px 14px; } }
+.preset {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: transparent;
+  border: 1px solid rgba(235, 211, 160, 0.18);
+  color: rgba(235, 211, 160, 0.85);
+  padding: 5px 11px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  font-family: inherit; white-space: nowrap;
+  transition: all 0.15s; flex-shrink: 0;
+}
+.preset:hover { border-color: rgba(235,211,160,0.4); color: #ebd3a0; }
+.preset.active {
+  background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0;
+}
+
+/* Active filter chips (pills affichant les filtres actuellement appliqués) */
+.active-chips-row {
+  display: none;
+  flex-wrap: wrap; gap: 6px; align-items: center;
+  padding: 6px 20px 10px 20px;
+  border-top: 1px dashed rgba(235, 211, 160, 0.08);
+}
+.active-chips-row.has-chips { display: flex; }
+.active-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(235, 211, 160, 0.14);
+  border: 1px solid rgba(235, 211, 160, 0.3);
+  color: #ebd3a0;
+  padding: 4px 6px 4px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 500;
+}
+.active-chip .x {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: rgba(235,211,160,0.25); color: #ebd3a0;
+  border: 0; cursor: pointer; font-size: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; line-height: 1; font-family: inherit;
+}
+.active-chip .x:hover { background: #ebd3a0; color: #0f2f3a; }
+.btn-clear-all {
+  background: transparent; border: 0;
+  color: rgba(235,211,160,0.65); font-size: 11px;
+  cursor: pointer; padding: 4px 8px;
+  text-decoration: underline; font-family: inherit;
+}
+.btn-clear-all:hover { color: #ebd3a0; }
+
+/* Bottom row : compteur + zoom */
+.filters-bottom {
+  padding: 4px 20px 8px 20px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  border-top: 1px dashed rgba(235, 211, 160, 0.08);
+}
+
+/* ----------- DRAWER LATÉRAL (filtres avancés) ----------- */
+.drawer-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 99;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s;
+}
+.drawer-overlay.open { opacity: 1; pointer-events: auto; }
+
+.filters-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 380px; max-width: 92vw;
+  background: #0f2f3a;
+  border-left: 1px solid rgba(235,211,160,0.2);
+  z-index: 100;
+  transform: translateX(100%);
+  transition: transform 0.25s ease-out;
+  display: flex; flex-direction: column;
+  box-shadow: -8px 0 30px rgba(0,0,0,0.5);
+}
+.filters-drawer.open { transform: translateX(0); }
+
+.drawer-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(235,211,160,0.12);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.drawer-header h3 {
+  font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 500;
+  color: #ebd3a0;
+}
+.drawer-close {
+  background: none; border: none; color: #ebd3a0;
+  font-size: 26px; cursor: pointer;
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: inherit; line-height: 1;
+}
+.drawer-close:hover { background: rgba(235,211,160,0.1); }
+
+.drawer-body {
+  flex: 1; overflow-y: auto;
+  padding: 16px 20px;
+}
+.drawer-section { margin-bottom: 22px; }
+.drawer-section h4 {
+  font-size: 11px; font-weight: 600;
+  color: rgba(235,211,160,0.55);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(235,211,160,0.08);
+}
+.drawer-field {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 10px;
+}
+.drawer-field label {
+  font-size: 13px; color: rgba(235,211,160,0.85);
+  flex: 1;
+}
+.drawer-field select,
+.drawer-field .multi-select-btn {
+  min-width: 160px; max-width: 220px;
+  font-size: 13px;
+}
+
+/* Dans le drawer, les multi-select panels s'ouvrent vers la gauche */
+.filters-drawer .multi-select { position: relative; }
+.filters-drawer .multi-select-panel {
+  right: 0; left: auto;
+  max-width: 280px;
+}
+
+/* Triple-chip pour le drawer (Avec / Sans) */
+.drawer-triple {
+  display: inline-flex; gap: 4px;
+}
+.drawer-triple .chip {
+  font-size: 11px; padding: 4px 9px;
+}
+
+.drawer-footer {
+  padding: 14px 20px;
+  border-top: 1px solid rgba(235,211,160,0.12);
+  display: flex; gap: 10px;
+  flex-shrink: 0;
+}
+.drawer-footer button {
+  flex: 1; padding: 10px 16px;
+  border-radius: 8px; font-size: 13px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-drawer-reset {
+  background: transparent; color: rgba(235,211,160,0.8);
+  border: 1px solid rgba(235,211,160,0.3);
+}
+.btn-drawer-reset:hover { color: #ebd3a0; border-color: #ebd3a0; }
+.btn-drawer-apply {
+  background: #ebd3a0; color: #0f2f3a; border: 0;
+}
+.btn-drawer-apply:hover { background: #f5e2b3; }
+
+/* Mobile : drawer en bottom sheet */
+@media (max-width: 767px) {
+  .filters-drawer {
+    top: auto; left: 0; right: 0; bottom: 0;
+    width: 100%; max-width: 100%;
+    height: 85vh;
+    border-left: none;
+    border-top: 1px solid rgba(235,211,160,0.2);
+    border-radius: 16px 16px 0 0;
+    transform: translateY(100%);
+  }
+  .filters-drawer.open { transform: translateY(0); }
+  .filters-main { padding: 8px 14px; gap: 6px; }
+  .presets-row { padding: 6px 14px 8px 14px; }
+  .active-chips-row { padding: 6px 14px 10px 14px; }
+  .filters-bottom { padding: 4px 14px 8px 14px; }
+}
+
+/* -------------------------------------------------------------------------
+   Onglets admin (Galerie / Visages / Maintenance)
+   ------------------------------------------------------------------------- */
+.view-tabs {
+  display: flex; gap: 4px; padding: 8px 20px;
+  background: rgba(13, 30, 37, 0.95);
+  border-bottom: 1px solid rgba(235, 211, 160, 0.1);
+  position: sticky; top: 52px; z-index: 49;
+  overflow-x: auto;
+}
+.view-tab {
+  background: transparent; color: rgba(235, 211, 160, 0.6);
+  border: 1px solid transparent; border-radius: 6px;
+  padding: 6px 12px; font-size: 13px; font-weight: 500;
+  cursor: pointer; white-space: nowrap;
+  font-family: inherit; transition: all 0.15s;
+}
+.view-tab:hover { color: #ebd3a0; background: rgba(235, 211, 160, 0.06); }
+.view-tab.active {
+  background: rgba(235, 211, 160, 0.12);
+  border-color: rgba(235, 211, 160, 0.3);
+  color: #ebd3a0;
+}
+@media (min-width: 768px) {
+  .view-tabs {
+    top: 52px;
+  }
+}
+.view { display: none; }
+.view.active { display: block; }
+
+/* -------------------------------------------------------------------------
+   Vue Visages
+   ------------------------------------------------------------------------- */
+.faces-wrap { padding: 20px; max-width: 1400px; margin: 0 auto; }
+.faces-toolbar {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.faces-toolbar .info {
+  font-size: 13px; opacity: 0.7; margin-left: auto;
+}
+.faces-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.face-card {
+  background: rgba(235, 211, 160, 0.04);
+  border: 1px solid rgba(235, 211, 160, 0.12);
+  border-radius: 10px;
+  padding: 12px;
+}
+.face-card.named { border-color: rgba(168, 230, 168, 0.25); }
+.face-card.cluster { border-color: rgba(255, 200, 120, 0.25); }
+.face-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; gap: 8px;
+}
+.face-card-name {
+  font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.face-card-badge {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.05em;
+  padding: 3px 8px; border-radius: 999px; text-transform: uppercase;
+}
+.face-card-badge.named { background: rgba(168, 230, 168, 0.2); color: #a8e6a8; }
+.face-card-badge.cluster { background: rgba(255, 200, 120, 0.2); color: #ffc878; }
+.face-thumbs {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+  margin-bottom: 10px;
+}
+.face-thumb {
+  aspect-ratio: 1 / 1; background: #0a1418;
+  border-radius: 4px; overflow: hidden;
+  background-size: cover; background-position: center;
+}
+.face-card-meta {
+  font-size: 11px; opacity: 0.6; margin-bottom: 10px;
+}
+.face-card-rename {
+  display: flex; gap: 6px;
+}
+.face-card-rename input {
+  flex: 1; background: rgba(235, 211, 160, 0.08); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.15); border-radius: 6px;
+  padding: 6px 10px; font-size: 13px; font-family: inherit; outline: none;
+}
+.face-card-rename input:focus { border-color: #ebd3a0; }
+.face-card-rename button {
+  background: #ebd3a0; color: #0f2f3a; border: none;
+  padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+}
+.face-card-rename button:hover { background: #d9bf8a; }
+.face-card-rename button:disabled { opacity: 0.5; cursor: wait; }
+
+/* -------------------------------------------------------------------------
+   Vue Doublons
+   ------------------------------------------------------------------------- */
+.dupes-wrap { padding: 20px; max-width: 1400px; margin: 0 auto; }
+.dupes-toolbar {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.dupes-title { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-weight: 500; }
+.dupes-actions { margin-left: auto; display: flex; gap: 8px; }
+.dupes-legend {
+  font-size: 12px; opacity: 0.65; margin-bottom: 18px; line-height: 1.5;
+  max-width: 900px;
+}
+.dupes-legend em { color: #ebd3a0; font-style: normal; font-weight: 500; }
+.dupes-status { font-size: 13px; opacity: 0.8; margin-bottom: 14px; min-height: 18px; }
+.dupes-list { display: flex; flex-direction: column; gap: 14px; }
+
+.dupe-group {
+  background: rgba(235, 211, 160, 0.04);
+  border: 1px solid rgba(235, 211, 160, 0.12);
+  border-radius: 10px;
+  padding: 14px;
+}
+.dupe-group.confirmed { border-color: rgba(168, 230, 168, 0.35); background: rgba(168, 230, 168, 0.05); }
+.dupe-group.pending { border-color: rgba(255, 200, 120, 0.25); }
+.dupe-group-header {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.dupe-group-title {
+  font-size: 13px; opacity: 0.8;
+}
+.dupe-group-badge {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.05em;
+  padding: 3px 8px; border-radius: 999px; text-transform: uppercase;
+}
+.dupe-group-badge.confirmed { background: rgba(168, 230, 168, 0.2); color: #a8e6a8; }
+.dupe-group-badge.pending { background: rgba(255, 200, 120, 0.2); color: #ffc878; }
+.dupe-group-badge.rejected { background: rgba(255, 150, 150, 0.2); color: #ff9a9a; }
+.dupe-group-actions { margin-left: auto; display: flex; gap: 6px; }
+
+.dupe-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.dupe-item {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(235, 211, 160, 0.08);
+  border-radius: 8px;
+  padding: 8px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.dupe-item.to-delete { border-color: rgba(255, 150, 150, 0.35); background: rgba(255, 150, 150, 0.05); opacity: 0.7; }
+.dupe-item.to-keep { border-color: rgba(168, 230, 168, 0.4); }
+.dupe-thumb {
+  aspect-ratio: 16 / 9; background: #0a1418;
+  border-radius: 6px; overflow: hidden;
+  background-size: cover; background-position: center;
+}
+.dupe-filename {
+  font-size: 11px; opacity: 0.9; word-break: break-all;
+  line-height: 1.3;
+}
+.dupe-meta {
+  font-size: 10px; opacity: 0.55;
+}
+.dupe-hash {
+  font-family: monospace; font-size: 10px; opacity: 0.55;
+}
+.dupe-item-actions {
+  display: flex; gap: 4px; margin-top: auto;
+}
+.dupe-item-actions button {
+  flex: 1;
+  background: rgba(235, 211, 160, 0.08); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.15);
+  border-radius: 4px; padding: 4px 6px;
+  font-size: 10px; cursor: pointer; font-family: inherit;
+}
+.dupe-item-actions button:hover { background: rgba(235, 211, 160, 0.18); }
+.dupe-item-actions button.danger { color: #ff9a9a; border-color: rgba(255, 150, 150, 0.3); }
+.dupe-item-actions button.danger:hover { background: rgba(255, 150, 150, 0.12); }
+.dupe-item-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* -------------------------------------------------------------------------
+   Vue Maintenance
+   ------------------------------------------------------------------------- */
+.maint-wrap { padding: 20px; max-width: 1000px; margin: 0 auto; }
+.maint-section {
+  background: rgba(235, 211, 160, 0.04);
+  border: 1px solid rgba(235, 211, 160, 0.12);
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+.maint-section h3 {
+  font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 500;
+  margin-bottom: 12px; color: #ebd3a0;
+}
+.maint-section p {
+  font-size: 13px; opacity: 0.75; line-height: 1.55; margin-bottom: 12px;
+}
+.faces-legend {
+  font-size: 12.5px; opacity: 0.7; line-height: 1.55;
+  margin-top: 10px; padding: 10px 12px;
+  background: rgba(235, 211, 160, 0.05);
+  border-left: 2px solid rgba(235, 211, 160, 0.25);
+  border-radius: 4px;
+}
+.faces-legend strong { color: #ebd3a0; opacity: 0.9; font-weight: 600; }
+.faces-legend em { font-style: italic; opacity: 0.8; }
+.maint-row {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.maint-row > label { font-size: 13px; opacity: 0.7; min-width: 90px; }
+.maint-row select, .maint-row input {
+  background: rgba(235, 211, 160, 0.08); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.15); border-radius: 6px;
+  padding: 7px 11px; font-size: 13px; font-family: inherit; outline: none;
+  flex: 1; min-width: 180px;
+}
+.maint-row select:focus, .maint-row input:focus { border-color: #ebd3a0; }
+.maint-btn {
+  background: rgba(235, 211, 160, 0.12); color: #ebd3a0;
+  border: 1px solid rgba(235, 211, 160, 0.3); border-radius: 6px;
+  padding: 7px 14px; font-size: 13px; font-weight: 500;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.maint-btn:hover { background: rgba(235, 211, 160, 0.2); }
+.maint-btn.primary { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+.maint-btn.primary:hover { background: #d9bf8a; }
+.maint-btn.danger { border-color: rgba(255, 150, 150, 0.4); color: #ff9a9a; }
+.maint-btn:disabled { opacity: 0.5; cursor: wait; }
+.maint-status {
+  font-size: 12px; opacity: 0.7; margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.maint-status .ok { color: #a8e6a8; }
+.maint-status .err { color: #ff9a9a; }
+.maint-log {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px; padding: 10px 12px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-size: 11px; line-height: 1.5; max-height: 240px; overflow-y: auto;
+}
+.maint-log .row { opacity: 0.85; margin-bottom: 2px; }
+.maint-log .row .ok { color: #a8e6a8; }
+
+/* Section Gemini */
+.gemini-stats {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.gemini-stat {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(235,211,160,0.15);
+  border-radius: 8px;
+  padding: 12px 10px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.gemini-stat .label {
+  display: block;
+  font-size: 11px;
+  opacity: 0.65;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+.gemini-stat .value {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  color: #ebd3a0;
+}
+.gemini-stat.analyzed .value { color: #a8e6cf; }
+.gemini-stat.processing .value { color: #ffd27a; }
+.gemini-stat.pending .value { color: #a8d0ff; }
+.gemini-stat.error .value { color: #ff9a9a; }
+.gemini-stat.skipped .value { color: rgba(235,211,160,0.45); }
+
+.gemini-errors-wrap, .gemini-throughput-wrap {
+  margin-top: 16px;
+}
+.gemini-errors-wrap h4, .gemini-throughput-wrap h4 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+  margin: 0 0 8px 0;
+}
+.gemini-errors {
+  background: rgba(0,0,0,0.25);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.gemini-errors em { opacity: 0.5; }
+.gemini-error-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.gemini-error-row:last-child { border-bottom: none; }
+.gemini-error-row .file { flex: 1; font-family: 'SF Mono', monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gemini-error-row .msg { flex: 2; opacity: 0.75; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gemini-error-row button {
+  background: transparent;
+  border: 1px solid rgba(235,211,160,0.3);
+  color: #ebd3a0;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.gemini-error-row button:hover { background: rgba(235,211,160,0.15); }
+
+.gemini-throughput {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 80px;
+  background: rgba(0,0,0,0.25);
+  padding: 10px;
+  border-radius: 6px;
+}
+.gemini-throughput .bar {
+  flex: 1;
+  background: linear-gradient(to top, #ebd3a0, rgba(235,211,160,0.4));
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  position: relative;
+  cursor: help;
+}
+.gemini-throughput .bar:hover { filter: brightness(1.2); }
+.gemini-throughput .bar .tip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0f2f3a;
+  color: #ebd3a0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.gemini-throughput .bar:hover .tip { opacity: 1; }
+
+@media (max-width: 900px) {
+  .gemini-stats { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 500px) {
+  .gemini-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Analyses complémentaires */
+.supp-kinds-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.supp-kind-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(235,211,160,0.15);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+}
+.supp-kind-card .kind-name {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #ebd3a0;
+}
+.supp-kind-card .counts {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+.supp-kind-card .counts .c-done { color: #a8e6cf; }
+.supp-kind-card .counts .c-processing { color: #ffd27a; }
+.supp-kind-card .counts .c-error { color: #ff9a9a; }
+.supp-kind-card .batch-controls {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.supp-kind-card .batch-controls select {
+  flex: 1;
+  min-width: 110px;
+  font-size: 12px;
+  padding: 5px 8px;
+  background: rgba(0,0,0,0.3);
+  color: #ebd3a0;
+  border: 1px solid rgba(235,211,160,0.2);
+  border-radius: 6px;
+}
+.supp-kind-card .batch-controls button {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(168,230,207,0.3);
+  background: rgba(168,230,207,0.15);
+  color: #a8e6cf;
+  cursor: pointer;
+}
+.supp-kind-card .batch-controls button:hover:not(:disabled) { background: rgba(168,230,207,0.25); }
+.supp-kind-card .batch-controls button:disabled { opacity: 0.5; cursor: wait; }
+.supp-kind-card .batch-progress {
+  font-size: 11px;
+  opacity: 0.75;
+  margin-top: 6px;
+  min-height: 14px;
+}
+/* Relance v-base */
+.vbase-batch-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.vbase-batch-row select {
+  font-size: 13px;
+  padding: 6px 10px;
+  background: rgba(0,0,0,0.3);
+  color: #ebd3a0;
+  border: 1px solid rgba(235,211,160,0.2);
+  border-radius: 6px;
+}
+@media (max-width: 700px) {
+  .supp-kinds-grid { grid-template-columns: 1fr; }
+}
+
+/* Panneau analyses compl. dans modal clip */
+.supp-section {
+  margin-top: 18px;
+  padding: 14px;
+  background: rgba(235,211,160,0.04);
+  border: 1px solid rgba(235,211,160,0.12);
+  border-radius: 10px;
+}
+.supp-section .supp-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(235,211,160,0.75);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+.supp-kind-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(235,211,160,0.08);
+}
+.supp-kind-row:last-child { border-bottom: none; }
+.supp-kind-row .label {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+}
+.supp-kind-row .status-chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.supp-kind-row .status-chip.done { background: rgba(168,230,207,0.15); color: #a8e6cf; }
+.supp-kind-row .status-chip.processing { background: rgba(255,210,122,0.15); color: #ffd27a; }
+.supp-kind-row .status-chip.error { background: rgba(255,154,154,0.15); color: #ff9a9a; }
+.supp-kind-row .status-chip.none { background: rgba(235,211,160,0.06); color: rgba(235,211,160,0.5); }
+.supp-kind-row .actions { display: flex; gap: 6px; }
+.supp-kind-row .btn-sm {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(235,211,160,0.2);
+  background: rgba(235,211,160,0.06);
+  color: #ebd3a0;
+  cursor: pointer;
+}
+.supp-kind-row .btn-sm:hover { background: rgba(235,211,160,0.14); }
+.supp-kind-row .btn-sm.primary { background: rgba(168,230,207,0.15); color: #a8e6cf; border-color: rgba(168,230,207,0.3); }
+.supp-kind-row .btn-sm:disabled { opacity: 0.5; cursor: wait; }
+.supp-result {
+  margin-top: 8px;
+  padding: 10px;
+  background: rgba(0,0,0,0.25);
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.supp-result .pitch, .supp-result .segment, .supp-result .strategy {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(235,211,160,0.1);
+}
+.supp-result .pitch:last-child, .supp-result .segment:last-child, .supp-result .strategy:last-child { border-bottom: none; margin-bottom: 0; }
+.supp-result h5 { font-family: 'Cormorant Garamond', serif; font-size: 15px; margin-bottom: 4px; color: #ebd3a0; }
+.supp-result .meta { font-size: 11px; opacity: 0.6; margin-bottom: 4px; }
+.supp-result .tag { display: inline-block; font-size: 10px; padding: 2px 6px; background: rgba(235,211,160,0.1); border-radius: 3px; margin: 2px 3px 2px 0; }
+.supp-result .hook { font-style: italic; color: #a8e6cf; margin: 4px 0; }
+.supp-result pre { white-space: pre-wrap; word-break: break-word; font-family: inherit; }
+
+.maint-log .row .err { color: #ff9a9a; }
+.maint-log .row .pending { color: #ffc878; }
+.worker-offline {
+  background: rgba(255, 150, 150, 0.08);
+  border: 1px dashed rgba(255, 150, 150, 0.3);
+  color: #ff9a9a;
+  border-radius: 8px; padding: 14px; font-size: 13px;
+  margin-bottom: 18px;
+}
+
+/* ---------- Montées (vidéos assemblées) ---------- */
+.montees-wrap { padding: 16px 20px 40px; max-width: 1400px; margin: 0 auto; }
+.montees-toolbar {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 8px; flex-wrap: wrap;
+}
+.montees-title {
+  font-size: 18px; font-weight: 600; color: #ebd3a0;
+  display: flex; align-items: center; gap: 8px;
+}
+.montees-count {
+  font-size: 12px; font-weight: 500; color: rgba(235,211,160,0.55);
+  background: rgba(235,211,160,0.08); padding: 2px 8px; border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.montees-actions { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.montees-actions input, .montees-actions select {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(235,211,160,0.15);
+  color: #ebd3a0; border-radius: 8px; padding: 8px 12px; font-size: 13px;
+}
+.montees-actions input:focus, .montees-actions select:focus {
+  outline: none; border-color: rgba(235,211,160,0.4);
+}
+.montees-actions input { min-width: 200px; }
+.montees-legend {
+  font-size: 12px; color: rgba(235,211,160,0.55);
+  margin-bottom: 16px; line-height: 1.5;
+}
+.montees-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+.montee-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(235,211,160,0.1);
+  border-radius: 12px; overflow: hidden;
+  transition: border-color 0.15s, transform 0.15s;
+  display: flex; flex-direction: column;
+}
+.montee-card:hover {
+  border-color: rgba(235,211,160,0.3);
+  transform: translateY(-2px);
+}
+.montee-thumb {
+  position: relative; aspect-ratio: 9/16;
+  background: #000; overflow: hidden;
+}
+.montee-thumb img, .montee-thumb video {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.montee-badge {
+  position: absolute; top: 8px; left: 8px;
+  background: rgba(0,0,0,0.7); color: #ebd3a0;
+  padding: 3px 8px; border-radius: 6px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+}
+.montee-badge-status {
+  position: absolute; top: 8px; right: 8px;
+  padding: 3px 8px; border-radius: 6px;
+  font-size: 10px; font-weight: 600;
+}
+.montee-badge-status.approved { background: #3b82f6; color: #fff; }
+.montee-badge-status.published { background: #22c55e; color: #000; }
+.montee-badge-status.pending { background: #f59e0b; color: #000; }
+.montee-badge-status.rejected { background: #ef4444; color: #fff; }
+.montee-info { padding: 10px 12px; }
+.montee-title {
+  font-size: 13px; font-weight: 600; color: #ebd3a0;
+  margin-bottom: 4px; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.montee-meta {
+  font-size: 11px; color: rgba(235,211,160,0.55);
+  font-variant-numeric: tabular-nums;
+  display: flex; justify-content: space-between;
+}
+.montee-actions {
+  display: flex; gap: 4px; padding: 0 10px 10px;
+}
+.montee-actions a {
+  flex: 1; text-align: center; padding: 6px 4px;
+  font-size: 11px; font-weight: 500;
+  color: #ebd3a0; background: rgba(235,211,160,0.08);
+  border-radius: 6px; text-decoration: none;
+  transition: background 0.15s;
+}
+.montee-actions a:hover { background: rgba(235,211,160,0.18); }
+</style>
+</head>
+<body>
+
+<div id="auth-screen" class="auth-screen" style="display:none">
+  <div class="auth-box">
+    <h1>Somatica Library</h1>
+    <p class="subtitle">Ta banque de clips vidéo pour les Reels</p>
+    <div id="step-email">
+      <input type="email" id="email-input" placeholder="ton@email.com" autocomplete="email">
+      <button id="send-link">Recevoir un code</button>
+    </div>
+    <div id="step-code" style="display:none">
+      <input type="text" id="code-input" placeholder="Code à 8 chiffres" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+      <button id="verify-code">Se connecter</button>
+      <div style="text-align:center;margin-top:10px;"><a href="#" id="change-email" style="color:rgba(235,211,160,0.6);font-size:13px;text-decoration:none;">Changer d'email</a></div>
+    </div>
+    <div class="msg" id="auth-msg"></div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <div class="picker-banner" id="picker-banner">
+    <span class="pb-icon">🎬</span>
+    <div class="pb-text">
+      <div>Mode sélection pour <span class="pb-id" id="picker-return-id">—</span></div>
+      <div class="pb-hint">Coche les clips dans l'ordre souhaité puis clique « Valider la sélection » en bas.</div>
+    </div>
+    <a class="pb-cancel" id="picker-cancel" href="#">Annuler</a>
+  </div>
+  <header>
+    <div class="title">
+      Somatica Library
+      <span class="count" id="total-count">chargement...</span>
+    </div>
+    <div class="media-switch" id="media-switch">
+      <button class="media-btn active" data-media="video">🎬 Vidéo</button>
+      <button class="media-btn" data-media="photo">📷 Photo</button>
+      <button class="media-btn" data-media="image">✨ Images</button>
+    </div>
+    <button class="sel-toggle" id="sel-flag" type="button" title="Marquer les cartes cochées (✓) comme sélection à signaler">📌 Signaler les cochées</button>
+    <button class="sel-toggle" id="sel-view" type="button" title="N'afficher que ma sélection signalée">👁️ Ma sélection <span id="sel-count"></span></button>
+    <button class="sel-toggle" id="sel-clear" type="button" title="Tout dé-signaler (vider ma sélection)">✕ Vider</button>
+  </header>
+
+  <nav class="view-tabs" id="view-tabs">
+    <button class="view-tab active" data-view="gallery">Galerie</button>
+    <button class="view-tab" data-view="montees">Montées</button>
+    <button class="view-tab" data-view="faces">Visages</button>
+    <button class="view-tab" data-view="ai">Analyse IA</button>
+    <button class="view-tab" data-view="dupes">Doublons</button>
+    <button class="view-tab" data-view="maintenance">Maintenance</button>
+  </nav>
+
+  <div class="view active" id="view-gallery">
+
+  <div class="filters">
+    <!-- Ligne 1 : barre principale compacte -->
+    <div class="filters-main">
+      <input type="search" id="search-input" placeholder="Rechercher description, tags, transcript...">
+
+      <select id="sort-select" title="Trier par">
+        <option value="source_desc">📅 Plus récent</option>
+        <option value="source_asc">📅 Plus ancien</option>
+        <option value="upload_desc">⬆️ Upload récent</option>
+        <option value="upload_asc">⬆️ Upload ancien</option>
+        <option value="location_asc">🌍 Lieu A-Z</option>
+        <option value="quality_desc">⭐ Qualité ↓</option>
+        <option value="quality_asc">⭐ Qualité ↑</option>
+        <option value="duration_asc">⏱️ Durée ↑</option>
+        <option value="duration_desc">⏱️ Durée ↓</option>
+      </select>
+
+      <button class="btn-filters-toggle" id="btn-open-drawer" title="Filtres avancés">
+        <span>⚙️ Filtres</span>
+        <span class="badge" id="active-filters-badge" style="display:none">0</span>
+      </button>
+
+      <button class="btn-tri-toggle" id="tri-mode-btn" title="Activer le mode tri pour classer les clips">
+        <span>🏷️ Mode tri</span>
+      </button>
+    </div>
+
+    <!-- Barre du mode tri (visible seulement quand le mode tri est actif) -->
+    <div class="tri-bar" id="tri-bar">
+      <label class="tri-hide">
+        <input type="checkbox" id="tri-hide-checkbox"> Masquer les déjà triées
+      </label>
+      <label class="tri-hide">
+        <input type="checkbox" id="tri-refused-checkbox"> Afficher les refusés
+      </label>
+      <label class="tri-hide">
+        <input type="checkbox" id="tri-bug-checkbox"> Afficher seulement les buggés
+      </label>
+      <button type="button" class="tri-selectall" id="select-all-visible" title="Sélectionner toutes les vignettes affichées pour les taguer en lot">Tout sélectionner l'affiché</button>
+      <span class="tri-progress" id="tri-progress"></span>
+    </div>
+
+    <!-- Ligne 2 : presets rapides -->
+    <div class="presets-row" id="presets-row">
+      <button class="preset" data-preset="reel">✨ Prêts Reel</button>
+      <button class="preset" data-preset="calm">🎬 Calm</button>
+      <button class="preset" data-preset="intense">🔥 Intense</button>
+      <button class="preset" data-preset="neutral">🧘 Neutre</button>
+      <button class="preset" data-preset="to_analyze">💭 À analyser</button>
+      <button class="preset" data-preset="no_face">👤 Sans visage</button>
+      <button class="preset" data-preset="with_music">🎵 Avec musique</button>
+      <button class="preset" data-preset="with_location">📍 Avec lieu</button>
+    </div>
+
+    <!-- Ligne 2 bis : filtres adaptés photos / images (mode non-vidéo) -->
+    <div class="photo-filters-row" id="photo-filters-row">
+      <select id="pf-status" title="Statut de tri">
+        <option value="">Tous statuts</option>
+        <option value="a_trier">À trier</option>
+        <option value="ok">OK</option>
+        <option value="refuse">Refusé</option>
+        <option value="bug">Bug</option>
+      </select>
+      <select id="pf-tagged" class="photo-only" title="Étiquetage">
+        <option value="">Toutes</option>
+        <option value="untagged">Sans étiquette</option>
+        <option value="tagged">Étiquetées</option>
+      </select>
+      <select id="pf-rating" title="Note minimale">
+        <option value="0">Toutes notes</option>
+        <option value="1">★ ≥ 1</option>
+        <option value="3">★ ≥ 3</option>
+        <option value="5">★ ≥ 5</option>
+        <option value="7">★ ≥ 7</option>
+      </select>
+      <select id="pf-facil" class="photo-only" title="Facilitateur">
+        <option value="">Tous facilitateurs</option>
+        <option value="__none__">Sans facilitateur</option>
+        <option value="facil_jerome">Jérôme</option>
+        <option value="facil_nath">Nath</option>
+        <option value="facil_duo">Les deux</option>
+      </select>
+      <select id="pf-contexte" class="photo-only" title="Contexte">
+        <option value="">Tous contextes</option>
+        <option value="__none__">Sans contexte</option>
+        <option value="formation">Formation</option>
+        <option value="seance">Séance</option>
+        <option value="individuel">Individuel</option>
+      </select>
+      <select id="pf-pratique" title="Pratique">
+        <option value="">Toutes pratiques</option>
+        <option value="__none__">Sans pratique</option>
+        <option value="innerdance">Innerdance</option>
+        <option value="breathwork">Breathwork</option>
+        <option value="qi_cleansing">Qi cleansing</option>
+        <option value="cacao">Cacao</option>
+      </select>
+      <select id="pf-salle" class="photo-only" title="Salle / lieu">
+        <option value="">Toutes salles</option>
+      </select>
+      <select id="pf-participante" class="photo-only" title="Participante">
+        <option value="">Toutes</option>
+      </select>
+    </div>
+
+    <!-- Ligne 3 : filtres actifs (chips) -->
+    <div class="active-chips-row" id="active-chips-row">
+      <!-- généré dynamiquement par JS -->
+    </div>
+
+    <!-- Ligne 4 : compteur + zoom -->
+    <div class="filters-bottom">
+      <span class="count-filtered" id="filtered-count"></span>
+      <div class="zoom-control" id="zoom-control" aria-label="Largeur de la grille" style="margin-left:auto">
+        <input type="range" id="cols-range" min="1" max="16" step="1" value="3" aria-label="Nombre de colonnes">
+        <span class="cols-val" id="cols-val">3</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drawer filtres avancés -->
+  <div class="drawer-overlay" id="drawer-overlay"></div>
+  <aside class="filters-drawer" id="filters-drawer" aria-label="Filtres avancés">
+    <div class="drawer-header">
+      <h3>Filtres avancés</h3>
+      <button class="drawer-close" id="drawer-close" aria-label="Fermer">×</button>
+    </div>
+
+    <div class="drawer-body">
+
+      <section class="drawer-section">
+        <h4>Quick access</h4>
+        <div class="drawer-field">
+          <label for="usable-reel">✨ Prêt pour Reel</label>
+          <div class="chip primary-chip" id="usable-reel" title="Usable pour Reel">
+            <span>✨</span> Activer
+          </div>
+        </div>
+        <div class="drawer-field">
+          <label>⭐ Qualité minimum</label>
+          <div class="slider-wrap" title="Qualité minimum">
+            <input type="range" id="quality-slider" min="0" max="10" step="1" value="0">
+            <span class="val" id="quality-val">0</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="drawer-section">
+        <h4>🏷️ Mon tri</h4>
+        <div class="drawer-field">
+          <label for="tri-status-filter">Statut</label>
+          <select id="tri-status-filter">
+            <option value="">Tous</option>
+            <option value="a_trier">À trier</option>
+            <option value="ok">OK</option>
+            <option value="refuse">Refusé</option>
+            <option value="bug">Bug</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="tri-rating-filter">Note minimum</label>
+          <select id="tri-rating-filter">
+            <option value="0">Toutes</option>
+            <option value="3">≥ 3</option>
+            <option value="5">≥ 5</option>
+            <option value="7">≥ 7 (très beau)</option>
+            <option value="9">≥ 9</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="tri-pratique-filter">Pratique</label>
+          <select id="tri-pratique-filter">
+            <option value="">Toutes</option>
+            <option value="innerdance">Innerdance</option>
+            <option value="breathwork">Breathwork</option>
+            <option value="qi_cleansing">Qi cleansing</option>
+            <option value="cacao">Cacao</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="tri-contexte-filter">Contexte / cas</label>
+          <select id="tri-contexte-filter">
+            <option value="">Tous</option>
+            <option value="formation">Formation</option>
+            <option value="seance">Séance</option>
+            <option value="individuel">Individuel</option>
+            <option value="duo_jerome_nathalie">Duo Jérôme &amp; Nathalie</option>
+            <option value="deja_monte">Déjà monté</option>
+            <option value="texte_incruste">Texte incrusté</option>
+            <option value="son_origine">Son d'origine ++</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="tri-participante-filter">Participante</label>
+          <select id="tri-participante-filter"><option value="">Toutes</option></select>
+        </div>
+      </section>
+
+      <section class="drawer-section">
+        <h4>Contenu</h4>
+        <div class="drawer-field">
+          <label for="intensity-filter">🎭 Intensité</label>
+          <select id="intensity-filter" title="Intensité émotionnelle">
+            <option value="">Toutes</option>
+            <option value="calm">Calme</option>
+            <option value="neutral">Neutre</option>
+            <option value="intense">Intense</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label>Émotions</label>
+          <div class="multi-select" data-filter="emotions">
+            <button class="multi-select-btn" id="emotions-btn">
+              <span>Toutes</span> <span class="caret">▼</span>
+            </button>
+            <div class="multi-select-panel" id="emotions-panel"></div>
+          </div>
+        </div>
+        <div class="drawer-field">
+          <label>Tags</label>
+          <div class="multi-select" data-filter="tags">
+            <button class="multi-select-btn" id="tags-btn">
+              <span>Tous</span> <span class="caret">▼</span>
+            </button>
+            <div class="multi-select-panel" id="tags-panel"></div>
+          </div>
+        </div>
+        <div class="drawer-field">
+          <label>👤 Personnes</label>
+          <select id="persons-filter" title="Personnes">
+            <option value="">Toutes</option>
+            <option value="0">Sans personne</option>
+            <option value="1">1 personne</option>
+            <option value="2+">2+ personnes</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label>👤 Personnes nommées</label>
+          <div class="multi-select" data-filter="personsNames">
+            <button class="multi-select-btn" id="personsNames-btn">
+              <span>Toutes</span> <span class="caret">▼</span>
+            </button>
+            <div class="multi-select-panel" id="personsNames-panel"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="drawer-section">
+        <h4>Technique</h4>
+        <div class="drawer-field">
+          <label for="ambiance-filter">Ambiance</label>
+          <select id="ambiance-filter">
+            <option value="">Toutes</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="movement-filter">Mouvement</label>
+          <select id="movement-filter">
+            <option value="">Tous</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="lighting-filter">Éclairage</label>
+          <select id="lighting-filter">
+            <option value="">Tous</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="location-filter">Lieu</label>
+          <select id="location-filter">
+            <option value="">Tous</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="duration-filter">Durée</label>
+          <select id="duration-filter">
+            <option value="">Toutes</option>
+            <option value="short">Courte (0-15s)</option>
+            <option value="medium">Moyenne (15-60s)</option>
+            <option value="long">Longue (60s+)</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label>🎵 Musique</label>
+          <div class="drawer-triple">
+            <div class="chip" id="chip-music-with" data-value="with">Avec</div>
+            <div class="chip" id="chip-music-without" data-value="without">Sans</div>
+          </div>
+        </div>
+        <div class="drawer-field">
+          <label>💬 Paroles</label>
+          <div class="drawer-triple">
+            <div class="chip" id="chip-speech-with" data-value="with">Avec</div>
+            <div class="chip" id="chip-speech-without" data-value="without">Sans</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="drawer-section">
+        <h4>Statut</h4>
+        <div class="drawer-field">
+          <label for="status-filter">Statut clip</label>
+          <select id="status-filter">
+            <option value="available">Dispo</option>
+            <option value="in_use">Utilisé</option>
+            <option value="archived">Archivé</option>
+            <option value="rejected">Rejeté</option>
+            <option value="">Tous</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="analysis-filter">Analyse</label>
+          <select id="analysis-filter">
+            <option value="">Toutes</option>
+            <option value="done">Analysées</option>
+            <option value="pending">En attente</option>
+            <option value="in_progress">En cours</option>
+            <option value="failed">Échec</option>
+          </select>
+        </div>
+        <div class="drawer-field">
+          <label for="usage-filter">↻ Utilisation dans Reels</label>
+          <select id="usage-filter" title="Filtrer par usage dans Reels">
+            <option value="">Tous</option>
+            <option value="unused">Non utilisé</option>
+            <option value="used">Utilisé au moins 1x</option>
+          </select>
+        </div>
+      </section>
+
+    </div>
+
+    <div class="drawer-footer">
+      <button class="btn-drawer-reset" id="reset-filters">↻ Réinitialiser</button>
+      <button class="btn-drawer-apply" id="drawer-apply">✓ Fermer</button>
+    </div>
+  </aside>
+
+  <div class="gallery" id="gallery">
+    <div class="loading">Chargement des clips...</div>
+  </div>
+
+  </div><!-- /#view-gallery -->
+
+  <div class="view" id="view-montees">
+    <div class="montees-wrap">
+      <div class="montees-toolbar">
+        <div class="montees-title">Vidéos montées <span class="montees-count" id="montees-count"></span></div>
+        <div class="montees-actions">
+          <input type="search" id="montees-search" placeholder="Rechercher par prefix, titre...">
+          <select id="montees-filter-feed">
+            <option value="">Tous les réseaux</option>
+          </select>
+          <select id="montees-filter-status">
+            <option value="">Tous statuts</option>
+            <option value="approved">Programmé</option>
+            <option value="published">Publié</option>
+            <option value="pending">En review</option>
+            <option value="rejected">Refusé</option>
+          </select>
+          <button class="maint-btn" id="montees-refresh">↻</button>
+        </div>
+      </div>
+      <div class="montees-legend">
+        Toutes les vidéos assemblées (Reels) poussées au feed, triées par date de publication. Clique sur une carte pour ouvrir le MP4, la fiche Notion ou le projet SomaticaEdit.
+      </div>
+      <div class="montees-grid" id="montees-grid">
+        <div class="loading">Chargement des vidéos montées...</div>
+      </div>
+    </div>
+  </div><!-- /#view-montees -->
+
+  <div class="view" id="view-faces">
+    <div class="faces-wrap">
+      <div class="maint-section">
+        <h3>Apprentissage & matching</h3>
+        <div class="maint-row">
+          <button class="maint-btn" id="faces-build">Build (apprendre sur vidéos mono-personne)</button>
+          <button class="maint-btn primary" id="faces-match">Match (identifier _UNKNOWN_)</button>
+          <span class="maint-status" id="facejob-status"></span>
+        </div>
+        <div class="faces-legend">
+          <strong>Build</strong> : apprend les visages sur les clips marqués comme ne contenant qu'une seule personne connue.<br>
+          <strong>Match</strong> : identifie les visages restants dans les clips marqués <em>_UNKNOWN_</em>.
+        </div>
+      </div>
+
+      <div class="faces-toolbar">
+        <div class="faces-title">Visages identifiés</div>
+        <div class="faces-actions">
+          <button class="maint-btn" id="faces-refresh">↻ Rafraîchir</button>
+          <button class="maint-btn primary" id="faces-run-match">Relancer le matching</button>
+        </div>
+      </div>
+      <div class="faces-status" id="faces-status"></div>
+      <div class="faces-grid" id="faces-grid">
+        <div class="maint-status">Chargement...</div>
+      </div>
+    </div>
+  </div><!-- /#view-faces -->
+
+  <div class="view" id="view-ai">
+    <div class="maint-wrap">
+      <div class="maint-section">
+        <h3>Analyse Gemini</h3>
+
+        <div class="gemini-stats" id="gemini-stats">
+          <div class="gemini-stat"><span class="label">Done</span><span class="value" id="gem-done">—</span></div>
+          <div class="gemini-stat analyzed"><span class="label">Analyzed</span><span class="value" id="gem-analyzed">—</span></div>
+          <div class="gemini-stat processing"><span class="label">Processing</span><span class="value" id="gem-processing">—</span></div>
+          <div class="gemini-stat pending"><span class="label">Pending</span><span class="value" id="gem-pending">—</span></div>
+          <div class="gemini-stat error"><span class="label">Error</span><span class="value" id="gem-error">—</span></div>
+          <div class="gemini-stat skipped"><span class="label">Skipped</span><span class="value" id="gem-skipped">—</span></div>
+        </div>
+
+        <div class="maint-row">
+          <button class="maint-btn" id="gem-refresh">↻ Actualiser</button>
+          <button class="maint-btn" id="gem-unblock">Débloquer fantômes</button>
+          <button class="maint-btn" id="gem-retry-errors">Réessayer erreurs</button>
+          <button class="maint-btn primary" id="gem-force-run">Forcer un tour (batch <span id="gem-batch-val">30</span>)</button>
+          <span class="maint-status" id="gem-status"></span>
+        </div>
+
+        <div class="maint-row">
+          <label for="gem-batch-slider">Batch size</label>
+          <input type="range" id="gem-batch-slider" min="5" max="100" step="5" value="30">
+          <button class="maint-btn" id="gem-apply-cron">Appliquer au cron</button>
+        </div>
+
+        <div class="gemini-errors-wrap">
+          <h4>Dernières erreurs</h4>
+          <div class="gemini-errors" id="gemini-errors"><em>Aucune</em></div>
+        </div>
+
+        <div class="gemini-throughput-wrap">
+          <h4>Vidéos analysées (dernières 24h)</h4>
+          <div class="gemini-throughput" id="gemini-throughput"></div>
+        </div>
+      </div>
+
+      <div class="maint-section">
+        <h3>Relancer l'analyse v-base</h3>
+        <p style="font-size:12.5px;opacity:0.7;margin-bottom:10px;">
+          Remet des clips en <code>pending</code>. Le cron Gemini les reprendra au prochain tour (chaque 2 min).
+        </p>
+        <div class="vbase-batch-row">
+          <select id="vbase-filter">
+            <option value="error">Uniquement les erreurs</option>
+            <option value="missing">Jamais analysés (NULL)</option>
+            <option value="done">Re-run sur les done (tout recalculer)</option>
+            <option value="all">TOUT relancer (prudence)</option>
+          </select>
+          <button class="maint-btn primary" id="vbase-batch-run">Marquer en pending</button>
+          <span class="maint-status" id="vbase-batch-status"></span>
+        </div>
+      </div>
+
+      <div class="maint-section">
+        <h3>Analyses complémentaires</h3>
+        <p style="font-size:12.5px;opacity:0.7;margin-bottom:10px;">
+          Analyses on-demand par clip (pitchs Reel, points de coupe, captions). Lancer à l'unité depuis la fiche clip, ou en batch par kind via les cartes ci-dessous.
+        </p>
+        <div class="supp-kinds-grid" id="supp-kinds-grid">
+          <!-- rempli par admin.js -->
+        </div>
+        <div class="maint-row">
+          <button class="maint-btn" id="supp-refresh">↻ Actualiser compteurs</button>
+          <span class="maint-status" id="supp-status"></span>
+        </div>
+      </div>
+    </div>
+  </div><!-- /#view-ai -->
+
+  <div class="view" id="view-dupes">
+    <div class="dupes-wrap">
+      <div class="dupes-toolbar">
+        <div class="dupes-title">Candidats doublons</div>
+        <div class="dupes-actions">
+          <button class="maint-btn" id="dupes-refresh">↻ Rafraîchir</button>
+          <button class="maint-btn primary" id="dupes-hash-all">Hasher tout</button>
+        </div>
+      </div>
+      <div class="dupes-legend">
+        Candidats = vidéos partageant <em>taille + durée + date source</em>. Lancer le hash pour confirmer. Les doublons confirmés (même SHA256) apparaissent en vert.
+      </div>
+      <div class="dupes-status" id="dupes-status"></div>
+      <div class="dupes-list" id="dupes-list">
+        <div class="maint-status">Clique sur ↻ pour charger.</div>
+      </div>
+    </div>
+  </div><!-- /#view-dupes -->
+
+  <div class="view" id="view-maintenance">
+    <div class="maint-wrap">
+      <div class="worker-offline" id="worker-offline" style="display:none">
+        ⚠️ Le worker local n'est pas joignable. Vérifie qu'il tourne (<code>library_worker.py</code>) et que l'URL est correcte dans les réglages.
+      </div>
+
+      <div class="maint-section">
+        <h3>Connexion au worker</h3>
+        <div class="maint-row">
+          <label for="worker-url-input">URL du worker</label>
+          <input type="text" id="worker-url-input" placeholder="https://worker.somatica.fr ou http://localhost:8787">
+        </div>
+        <div class="maint-row">
+          <label for="worker-token-input">Token</label>
+          <input type="password" id="worker-token-input" placeholder="Token secret">
+        </div>
+        <div class="maint-row">
+          <button class="maint-btn primary" id="worker-save">Enregistrer</button>
+          <button class="maint-btn" id="worker-ping">Tester la connexion</button>
+          <span class="maint-status" id="worker-status">Non configuré</span>
+        </div>
+      </div>
+
+      <div class="maint-section">
+        <h3>Synchro iCloud</h3>
+        <div class="maint-row">
+          <label for="album-select">Album source</label>
+          <select id="album-select">
+            <option value="">Chargement...</option>
+          </select>
+          <button class="maint-btn" id="albums-refresh">↻</button>
+        </div>
+        <div class="maint-row">
+          <button class="maint-btn primary" id="run-sync">Synchroniser l'album</button>
+          <span class="maint-status" id="sync-status"></span>
+        </div>
+      </div>
+
+      <div class="maint-section">
+        <h3>Miniatures</h3>
+        <div class="maint-row">
+          <button class="maint-btn" id="thumbs-check">Vérifier manquantes</button>
+          <button class="maint-btn primary" id="thumbs-run">Regénérer manquantes</button>
+          <button class="maint-btn danger" id="thumbs-redo">Regénérer tout (--redo)</button>
+          <span class="maint-status" id="thumbs-status"></span>
+        </div>
+      </div>
+
+      <div class="maint-section">
+        <h3>Journal</h3>
+        <div class="maint-log" id="maint-log"></div>
+      </div>
+    </div>
+  </div><!-- /#view-maintenance -->
+</div>
+
+<div class="selection-bar" id="selection-bar">
+  <div>
+    <div class="count"><span id="sel-count">0</span> sélectionné(s)</div>
+    <div class="meta" id="sel-meta">0 sec au total</div>
+  </div>
+  <div class="batch-tri" id="batch-tri"></div>
+  <div class="actions">
+    <button class="btn" id="clear-selection">Tout désélectionner</button>
+    <button class="btn danger" id="delete-dupes">Supprimer (doublon)</button>
+    <button class="btn primary" id="send-to-edit">Envoyer vers SomaticaEdit</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Clip</h2>
+      <button class="close" id="modal-close">&times;</button>
+    </div>
+    <div class="modal-video">
+      <video id="modal-video" controls playsinline></video>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-actions" id="modal-actions"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<datalist id="participantes-list"></datalist>
+<datalist id="salles-list"></datalist>
+<script src="app.js?v=20260621g"></script>
+<script src="admin.js?v=20260621g"></script>
+</body>
+</html>

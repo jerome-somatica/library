@@ -54,7 +54,6 @@ const MEDIA = {
   video: { table: 'video_library',    label: 'Vidéo',  participante: true },
   photo: { table: 'image_library',    label: 'Photo',  participante: true },
   image: { table: 'generated_images', label: 'Images', participante: false },
-  videoia: { table: 'generated_videos', label: 'Vidéo IA', participante: false }, // vidéos générées (i2v, Ken Burns)
 };
 function mediaTable() { return (MEDIA[state.mediaType] || MEDIA.video).table; }
 function isVideoMode() { return state.mediaType === 'video'; }
@@ -517,22 +516,12 @@ function makeImageCard(c) {
   card.dataset.id = c.id;
   const thumb = document.createElement('div');
   thumb.className = 'thumb';
-  if (state.mediaType === 'videoia') {
-    const v = document.createElement('video');
-    v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'metadata'; v.src = c.r2_url;
-    if (c.thumb_url) v.poster = c.thumb_url;
-    v.style.width = '100%'; v.style.height = '100%'; v.style.objectFit = 'cover';
-    thumb.appendChild(v);
-    thumb.addEventListener('mouseenter', () => { v.play().catch(() => {}); });
-    thumb.addEventListener('mouseleave', () => { try { v.pause(); v.currentTime = 0; } catch (e) {} });
-  } else {
-    const img = document.createElement('img');
-    img.loading = 'lazy'; img.decoding = 'async';
-    img.dataset.imgSrc = c.r2_url;
-    img.alt = imageLabel(c);
-    thumb.appendChild(img);
-    getThumbObserver().observe(img);
-  }
+  const img = document.createElement('img');
+  img.loading = 'lazy'; img.decoding = 'async';
+  img.dataset.imgSrc = c.r2_url;
+  img.alt = imageLabel(c);
+  thumb.appendChild(img);
+  getThumbObserver().observe(img);
   const cb = document.createElement('div');
   cb.className = 'select-checkbox';
   cb.textContent = state.selection.has(c.id) ? '✓' : '';
@@ -688,20 +677,10 @@ function openImageModal(c) {
   const container = modalVideo.parentElement;
   let im = container.querySelector('.modal-img');
   if (!im) { im = document.createElement('img'); im.className = 'modal-img'; container.appendChild(im); }
-  if (state.mediaType === 'videoia') {
-    im.style.display = 'none';
-    modalVideo.style.display = '';
-    modalVideo.src = c.r2_url; modalVideo.muted = false; modalVideo.loop = true; modalVideo.controls = true;
-    try { modalVideo.load(); modalVideo.play().catch(() => {}); } catch (e) {}
-  } else {
-    im.src = c.r2_url; im.style.display = '';
-  }
+  im.src = c.r2_url; im.style.display = '';
   modalBody.innerHTML = '';
-  const dt = c.created_at ? new Date(c.created_at).toLocaleString('fr-FR') : null;
   const rows = state.mediaType === 'photo'
     ? [['Sujet', c.subject], ['Catégorie', c.category], ['Ambiance', c.ambiance], ['Qualité', c.quality_score != null ? c.quality_score + '/10' : null], ['Tags', (c.tags || []).join(', ')]]
-    : state.mediaType === 'videoia'
-    ? [['Prompt', c.prompt], ['Modèle', c.model], ['Durée', c.duration_sec ? c.duration_sec + ' s' : null], ['Date', dt], ['Tags', (c.tags || []).join(', ')]]
     : [['Prompt', c.prompt], ['Modèle', c.model], ['Source', c.source], ['Tags', (c.tags || []).join(', ')]];
   for (const [label, value] of rows) {
     if (!value) continue;
@@ -709,19 +688,6 @@ function openImageModal(c) {
     row.className = 'row';
     row.innerHTML = `<div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(String(value))}</div>`;
     modalBody.appendChild(row);
-  }
-  if (c.r2_url) {
-    const linkRow = document.createElement('div');
-    linkRow.className = 'row';
-    linkRow.innerHTML = '<div class="label">Lien</div><div class="value" style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap"><input readonly value="' + escapeHtml(c.r2_url) + '" style="flex:1;min-width:140px;font-size:.75rem" onclick="this.select()"><button type="button" class="copy-link-btn" style="padding:.35rem .7rem;cursor:pointer">Copier le lien</button></div>';
-    modalBody.appendChild(linkRow);
-    const cbtn = linkRow.querySelector('.copy-link-btn');
-    if (cbtn) cbtn.addEventListener('click', function () {
-      const u = c.r2_url || '';
-      const done = function () { cbtn.textContent = 'Lien copié'; setTimeout(function () { cbtn.textContent = 'Copier le lien'; }, 1500); };
-      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(u).then(done, function () { const t = linkRow.querySelector('input'); t.select(); try { document.execCommand('copy'); done(); } catch (e) {} }); }
-      else { const t = linkRow.querySelector('input'); t.select(); try { document.execCommand('copy'); done(); } catch (e) {} }
-    });
   }
   modalBg.classList.add('active');
 }
