@@ -2431,6 +2431,7 @@ function openModal(id) {
   if ((c.status || 'available') !== 'rejected') actions.push({ label: '🚫 Rejeter', cls: 'danger', onClick: () => setStatus(c.id, 'rejected') });
   if ((c.status || 'available') !== 'available') actions.push({ label: '↩︎ Réactiver', cls: '', onClick: () => setStatus(c.id, 'available') });
   actions.push({ label: '🔄 Re-analyser', cls: '', onClick: () => reanalyze(c.id) });
+  if (c.r2_url) actions.push({ label: '🔗 Copier le lien', cls: '', onClick: (e) => { const u = c.r2_url || ''; const b = e && e.currentTarget; const ok = () => { if (b) { b.textContent = '🔗 Lien copié'; setTimeout(() => { b.textContent = '🔗 Copier le lien'; }, 1500); } }; if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(u).then(ok, ok); else ok(); } });
   actions.push({ label: 'Fermer', cls: '', onClick: closeModal });
 
   for (const a of actions) {
