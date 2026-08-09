@@ -785,6 +785,13 @@ function buildQuery() {
     q = q.eq('tri_status', 'refuse');
   } else if (f.triHide) {
     q = q.or('tri_status.eq.a_trier,and(tri_status.eq.ok,tri_rating.is.null),and(tri_status.eq.ok,tri_rating.eq.0)');
+  // Le sélecteur des refusés vaut aussi pour les vidéos. Il y a DEUX constructeurs
+  // de requête dans ce fichier — celui-ci et buildImageQuery — et n'en traiter qu'un
+  // donne un bouton qui ne fait rien sur la moitié de l'application.
+  } else if (!f.triStatus && f.refuses === 'seuls') {
+    q = q.eq('tri_status', 'refuse');
+  } else if (!f.triStatus && f.refuses === 'masques') {
+    q = q.or('tri_status.is.null,tri_status.neq.refuse');
   }
 
   // Filtres "Mon tri" (drawer)
