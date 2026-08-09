@@ -13,9 +13,17 @@
 html, body { font-family: 'Inter', sans-serif; background: #0d1e25; color: #ebd3a0; min-height: 100vh; }
 body { padding-bottom: 140px; }
 
+/* Toute la zone haute colle d'un seul tenant : en-tête, onglets de vue, recherche
+   et filtres. Un seul point de calage, donc jamais de décalage entre eux. */
+/* L'en-tête et les onglets DÉFILENT avec la page. Ils se règlent une fois par
+   session — source, vue — et on les retrouve en remontant. Les garder collés
+   coûtait 140 px de hauteur en permanence, sur un écran de téléphone c'est la
+   moitié de ce qu'on voit. */
+.barre-haute { background: #0d1e25; }
+
 /* Header */
 header {
-  position: sticky; top: 0; z-index: 50;
+  z-index: 50;
   background: rgba(13, 30, 37, 0.95); backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(235, 211, 160, 0.15);
   padding: 14px 20px;
@@ -61,18 +69,19 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
   backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(235, 211, 160, 0.1);
 }
-/* Sur desktop, header + onglets + filtres restent fixés en haut, seule la galerie
-   scrolle. Les hauteurs sont MESURÉES en JS (calerBandeaux) et non écrites en dur :
-   l'en-tête fait une à trois lignes selon la largeur de la fenêtre, et la valeur
-   fixe de 52 px d'avant faisait glisser les filtres sous le titre dès qu'il en
-   faisait plus d'une. Les valeurs de repli servent avant la première mesure. */
-@media (min-width: 768px) {
-  .filters {
-    position: sticky;
-    top: calc(var(--h-header, 52px) + var(--h-tabs, 0px));
-    z-index: 48;
-  }
+/* LA barre collée, la seule. Une ligne : chercher, l'état, les filtres, le mode
+   tri, le compte. C'est tout ce qu'on a besoin de lire PENDANT qu'on fait défiler.
+   Collée sur téléphone aussi — c'était l'inverse avant, et c'est justement sur
+   petit écran qu'on en a le plus besoin. Plus aucune hauteur à mesurer : elle est
+   en haut, point. */
+.filters {
+  position: sticky;
+  top: 0;
+  z-index: 48;
+  background: #0d1e25;
 }
+/* Les réglages qui défilent : préréglages, barre du mode tri, largeur de grille. */
+.reglages-galerie { padding-bottom: 2px; }
 .filters-row {
   padding: 10px 20px;
   display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
@@ -849,8 +858,7 @@ body[data-media="image"] .photo-only { display: none; }
   display: flex; gap: 4px; padding: 8px 20px;
   background: rgba(13, 30, 37, 0.95);
   border-bottom: 1px solid rgba(235, 211, 160, 0.1);
-  /* juste sous l'en-tête, dont la hauteur est mesurée en JS (calerBandeaux) */
-  position: sticky; top: var(--h-header, 52px); z-index: 49;
+  /* collé par .barre-haute, avec l'en-tête et les filtres */
   overflow-x: auto;
 }
 .view-tab {
@@ -866,11 +874,10 @@ body[data-media="image"] .photo-only { display: none; }
   border-color: rgba(235, 211, 160, 0.3);
   color: #ebd3a0;
 }
-@media (min-width: 768px) {
-  .view-tabs {
-    top: 52px;
-  }
-}
+/* Il y avait ici un calage à 52 px en dur qui écrasait, plus bas dans la feuille,
+   la hauteur réellement mesurée : les onglets se collaient derrière l'en-tête et
+   disparaissaient au défilement. Les onglets sont désormais portés par
+   .barre-haute — plus aucune hauteur à leur imposer. */
 .view { display: none; }
 .view.active { display: block; }
 
@@ -1529,6 +1536,12 @@ body[data-media="image"] .photo-only { display: none; }
     </div>
     <a class="pb-cancel" id="picker-cancel" href="#">Annuler</a>
   </div>
+  <!-- En-tête et onglets de vue collés ENSEMBLE, en un seul bloc : avant, chacun
+       avait sa propre hauteur de calage mesurée en JS, et si la mesure tombait au
+       mauvais moment l'un passait derrière l'autre en laissant un trou par où la
+       galerie apparaissait. Les filtres, eux, restent dans #view-gallery — ils ne
+       doivent s'afficher que sur l'onglet Galerie — et se collent juste dessous. -->
+  <div class="barre-haute">
   <header>
     <div class="title">
       Somatica Library
@@ -1542,7 +1555,7 @@ body[data-media="image"] .photo-only { display: none; }
       <button class="media-btn" id="media-recordings" title="Les replays de tes lives ISIS">🔴 Enregistrement live</button>
     </div>
     <button class="sel-toggle" id="sel-flag" type="button" title="Marquer les cartes cochées (✓) comme sélection à signaler">📌 Signaler les cochées</button>
-    <button class="sel-toggle" id="sel-view" type="button" title="N'afficher que ma sélection signalée">👁️ Ma sélection <span id="sel-count"></span></button>
+    <button class="sel-toggle" id="sel-view" type="button" title="N'afficher que ma sélection signalée">👁️ Ma sélection <span id="pile-count"></span></button>
     <button class="sel-toggle" id="sel-clear" type="button" title="Tout dé-signaler (vider ma sélection)">✕ Vider</button>
   </header>
 
@@ -1554,8 +1567,44 @@ body[data-media="image"] .photo-only { display: none; }
     <button class="view-tab" data-view="dupes">Doublons</button>
     <button class="view-tab" data-view="maintenance">Maintenance</button>
   </nav>
+  </div><!-- /barre-haute -->
 
   <div class="view active" id="view-gallery">
+
+      <!-- Réglages de la galerie : ils défilent avec la page. On les pose
+           une fois, on ne les surveille pas — inutile qu'ils mangent la
+           hauteur figée du haut. -->
+      <div class="reglages-galerie">
+    <div class="presets-row" id="presets-row">
+      <button class="preset" data-preset="reel">✨ Prêts Reel</button>
+      <button class="preset" data-preset="calm">🎬 Calm</button>
+      <button class="preset" data-preset="intense">🔥 Intense</button>
+      <button class="preset" data-preset="neutral">🧘 Neutre</button>
+      <button class="preset" data-preset="to_analyze">💭 À analyser</button>
+      <button class="preset" data-preset="no_face">👤 Sans visage</button>
+      <button class="preset" data-preset="with_music">🎵 Avec musique</button>
+      <button class="preset" data-preset="with_location">📍 Avec lieu</button>
+    </div>
+    <div class="tri-bar" id="tri-bar">
+      <label class="tri-hide">
+        <input type="checkbox" id="tri-hide-checkbox"> Masquer les déjà triées
+      </label>
+      <label class="tri-hide">
+        <input type="checkbox" id="tri-refused-checkbox"> Afficher les refusés
+      </label>
+      <label class="tri-hide">
+        <input type="checkbox" id="tri-bug-checkbox"> Afficher seulement les buggés
+      </label>
+      <button type="button" class="tri-selectall" id="select-all-visible" title="Sélectionner toutes les vignettes affichées pour les taguer en lot">Tout sélectionner l'affiché</button>
+      <span class="tri-progress" id="tri-progress"></span>
+    </div>
+    <div class="filters-bottom">
+      <div class="zoom-control" id="zoom-control" aria-label="Largeur de la grille" style="margin-left:auto">
+        <input type="range" id="cols-range" min="1" max="16" step="1" value="3" aria-label="Nombre de colonnes">
+        <span class="cols-val" id="cols-val">3</span>
+      </div>
+    </div>
+      </div>
 
   <div class="filters">
     <!-- Ligne 1 : barre principale compacte -->
@@ -1586,34 +1635,15 @@ body[data-media="image"] .photo-only { display: none; }
       <button class="btn-tri-toggle active" id="masquer-refuses-btn">
         <span id="masquer-refuses-label">✅ Utilisables</span>
       </button>
+      <!-- Le compteur reste dans la barre collée : c'est le retour immédiat sur
+           l'effet d'un filtre. Sans lui, on ne sait pas si on cherche mal ou s'il
+           n'y a vraiment rien à trouver. -->
+      <span class="count-filtered" id="filtered-count"></span>
     </div>
 
     <!-- Barre du mode tri (visible seulement quand le mode tri est actif) -->
-    <div class="tri-bar" id="tri-bar">
-      <label class="tri-hide">
-        <input type="checkbox" id="tri-hide-checkbox"> Masquer les déjà triées
-      </label>
-      <label class="tri-hide">
-        <input type="checkbox" id="tri-refused-checkbox"> Afficher les refusés
-      </label>
-      <label class="tri-hide">
-        <input type="checkbox" id="tri-bug-checkbox"> Afficher seulement les buggés
-      </label>
-      <button type="button" class="tri-selectall" id="select-all-visible" title="Sélectionner toutes les vignettes affichées pour les taguer en lot">Tout sélectionner l'affiché</button>
-      <span class="tri-progress" id="tri-progress"></span>
-    </div>
 
     <!-- Ligne 2 : presets rapides -->
-    <div class="presets-row" id="presets-row">
-      <button class="preset" data-preset="reel">✨ Prêts Reel</button>
-      <button class="preset" data-preset="calm">🎬 Calm</button>
-      <button class="preset" data-preset="intense">🔥 Intense</button>
-      <button class="preset" data-preset="neutral">🧘 Neutre</button>
-      <button class="preset" data-preset="to_analyze">💭 À analyser</button>
-      <button class="preset" data-preset="no_face">👤 Sans visage</button>
-      <button class="preset" data-preset="with_music">🎵 Avec musique</button>
-      <button class="preset" data-preset="with_location">📍 Avec lieu</button>
-    </div>
 
     <!-- Ligne 2 bis : filtres adaptés photos / images (mode non-vidéo) -->
     <div class="photo-filters-row" id="photo-filters-row">
@@ -1672,13 +1702,6 @@ body[data-media="image"] .photo-only { display: none; }
     </div>
 
     <!-- Ligne 4 : compteur + zoom -->
-    <div class="filters-bottom">
-      <span class="count-filtered" id="filtered-count"></span>
-      <div class="zoom-control" id="zoom-control" aria-label="Largeur de la grille" style="margin-left:auto">
-        <input type="range" id="cols-range" min="1" max="16" step="1" value="3" aria-label="Nombre de colonnes">
-        <span class="cols-val" id="cols-val">3</span>
-      </div>
-    </div>
   </div>
 
   <!-- Drawer filtres avancés -->

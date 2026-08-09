@@ -70,7 +70,10 @@ window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 const DEFAULT_FILTERS = {
   search: '',
   sort: 'source_desc',
-  status: 'available',
+  // Vide, et non 'available' : avec une valeur par défaut, toute requête portait
+  // « status = available » en plus du reste. La position « Refusés » du sélecteur
+  // ne montrait donc jamais les éléments rejetés — ils devenaient invisibles partout.
+  status: '',
   analysis: '',
   duration: '',
   ambiance: '',
@@ -1925,7 +1928,10 @@ if (selClear) selClear.addEventListener('click', async () => {
 async function updateFlaggedCount() {
   try {
     const { count } = await sb.from(mediaTable()).select('id', { count: 'exact', head: true }).eq('flagged', true);
-    const el = document.getElementById('sel-count');
+    // « pile-count » et non « sel-count » : le second appartient à la barre du bas.
+    // Les deux portaient le même identifiant, donc ce compteur-ci écrasait l'autre
+    // et la barre du bas restait bloquée sur « 0 sélectionné(s) ».
+    const el = document.getElementById('pile-count');
     if (el) el.textContent = count ? `(${count})` : '';
   } catch (e) { /* silencieux */ }
 }
@@ -2349,33 +2355,9 @@ async function deleteSelectionAsDuplicates() {
   toast(`${done} supprimée(s)${fail ? ` · ${fail} échec(s)` : ''}`, fail ? 'error' : 'info');
 }
 
-// Les trois bandeaux du haut (titre, onglets, filtres) restent visibles pendant le
-// défilement. Leurs hauteurs changent — l'en-tête passe de une à trois lignes selon
-// la largeur, la barre de sélection apparaît et disparaît — donc on les mesure au
-// lieu de les écrire en dur. Une valeur figée faisait glisser les filtres sous le
-// titre et Jérôme perdait recherche, tri et onglets dès qu'il descendait.
-function calerBandeaux() {
-  const r = document.documentElement.style;
-  // Une hauteur nulle veut dire « pas encore affiché » (écran de connexion) : on
-  // retire la variable pour que la valeur de repli du CSS reprenne la main, plutôt
-  // que de coller les bandeaux à zéro. Le ResizeObserver repassera à l'affichage.
-  const poser = (nom, el) => {
-    const h = el && el.offsetParent ? el.offsetHeight : 0;
-    if (h > 0) r.setProperty(nom, h + 'px');
-    else r.removeProperty(nom);
-  };
-  poser('--h-header', document.querySelector('header'));
-  poser('--h-tabs', document.getElementById('view-tabs'));
-}
-calerBandeaux();
-window.addEventListener('resize', calerBandeaux);
-if (window.ResizeObserver) {
-  const veille = new ResizeObserver(calerBandeaux);
-  ['header', '#view-tabs'].forEach(sel => {
-    const el = document.querySelector(sel);
-    if (el) veille.observe(el);
-  });
-}
+// Plus rien à mesurer : la barre de recherche est collée en haut (top: 0), et
+// l'en-tête défile au-dessus d'elle. C'est la multiplication des calages calculés
+// les uns par rapport aux autres qui finissait par laisser un trou à l'écran.
 
 const rejeterSelBtn = $('rejeter-selection');
 rejeterSelBtn && rejeterSelBtn.addEventListener('click', rejeterSelection);
