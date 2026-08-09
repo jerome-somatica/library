@@ -346,6 +346,10 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
 }
 .btn-tri-toggle:hover { background: rgba(235,211,160,0.1); }
 .btn-tri-toggle.active { background: #ebd3a0; color: #0f2f3a; border-color: #ebd3a0; }
+/* Troisième position du sélecteur des refusés : on ne regarde QUE la corbeille.
+   Rouge et non doré, pour qu'on ne confonde jamais cet état avec l'affichage
+   habituel — c'est le seul où les bons éléments sont cachés. */
+.btn-tri-toggle.seuls-refuses { background: #e88a8a; color: #2b1414; border-color: #e88a8a; }
 
 .tri-bar { display: none; align-items: center; gap: 16px; flex-wrap: wrap; padding: 8px 0 2px; }
 body.tri-on .tri-bar { display: flex; }
