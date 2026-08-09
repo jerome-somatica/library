@@ -87,6 +87,9 @@ const DEFAULT_FILTERS = {
   triHide: false, // mode tri : masquer les clips déjà triés
   triRefused: false, // mode tri : afficher uniquement les refusés
   triBug: false, // mode tri : afficher uniquement les buggés
+  // Actif d'entrée de jeu : ce qui a été refusé n'a pas à revenir sous les yeux
+  // à chaque visite. Rien n'est supprimé, c'est seulement écarté de l'affichage.
+  masquerRefuses: true,
   triStatus: '',       // filtre drawer : statut de tri
   flaggedOnly: false,  // 📌 n'afficher que ma sélection (colonne flagged)
   triRatingMin: 0,     // filtre drawer : note minimale
@@ -499,6 +502,10 @@ function buildImageQuery() {
   if (f.triBug) q = q.eq('tri_status', 'bug');
   else if (f.triRefused) q = q.eq('tri_status', 'refuse');
   else if (f.triHide) q = q.eq('tri_status', 'a_trier');
+  // On écarte les refusés SAUF si un filtre plus précis les demande. Le « or » avec
+  // is.null est indispensable : un simple neq laisserait de côté tout ce qui n'a
+  // pas encore de statut, c'est-à-dire l'essentiel de ce qu'il reste à trier.
+  else if (f.masquerRefuses && !f.triStatus) q = q.or('tri_status.is.null,tri_status.neq.refuse');
   if (f.flaggedOnly) q = q.eq('flagged', true);
   if (f.search) {
     const s = f.search.replace(/[%_]/g, '');
@@ -1441,6 +1448,7 @@ function photoMatchesFilters(c) {
   if (f.triBug) { if (c.tri_status !== 'bug') return false; }
   else if (f.triRefused) { if (c.tri_status !== 'refuse') return false; }
   else if (f.triHide) { if (c.tri_status !== 'a_trier') return false; }
+  else if (f.masquerRefuses && !f.triStatus) { if (c.tri_status === 'refuse') return false; }
   return true;
 }
 
@@ -1915,6 +1923,23 @@ triBugCheckbox && triBugCheckbox.addEventListener('change', () => {
   state.filters.triBug = triBugCheckbox.checked;
   resetAndReload();
 });
+// Masquer les refusés : volontairement hors de la barre du mode tri, pour rester
+// accessible en permanence — c'est un réglage d'affichage, pas un outil de tri.
+const masquerRefusesBtn = $('masquer-refuses-btn');
+function refletMasquerRefuses() {
+  if (!masquerRefusesBtn) return;
+  const actif = !!state.filters.masquerRefuses;
+  masquerRefusesBtn.classList.toggle('active', actif);
+  const lab = $('masquer-refuses-label');
+  if (lab) lab.textContent = actif ? '🚫 Refusés masqués' : '👁️ Refusés visibles';
+}
+masquerRefusesBtn && masquerRefusesBtn.addEventListener('click', () => {
+  state.filters.masquerRefuses = !state.filters.masquerRefuses;
+  refletMasquerRefuses();
+  resetAndReload();
+});
+refletMasquerRefuses();
+
 const selectAllBtn = $('select-all-visible');
 selectAllBtn && selectAllBtn.addEventListener('click', selectAllVisible);
 // Restaurer l'état du mode tri + les cases
