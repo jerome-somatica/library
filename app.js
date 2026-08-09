@@ -87,10 +87,11 @@ const DEFAULT_FILTERS = {
   triHide: false, // mode tri : masquer les clips déjà triés
   triRefused: false, // mode tri : afficher uniquement les refusés
   triBug: false, // mode tri : afficher uniquement les buggés
-  // Sélecteur à trois positions sur les refusés. Démarre sur « masques » : ce qui
-  // a été écarté n'a pas à revenir sous les yeux à chaque visite. Aucune des trois
-  // positions ne supprime quoi que ce soit, elles ne font que filtrer l'affichage.
-  refuses: 'masques', // 'masques' | 'tous' | 'seuls'
+  // Sélecteur d'exploitabilité : la vraie question posée à Library n'est pas
+  // « refusé ou pas » mais « est-ce que les moteurs de production peuvent s'en
+  // servir ». Un élément à trier n'est pas exploitable non plus — tant qu'il n'est
+  // pas validé, il ne part nulle part. Aucune position ne supprime quoi que ce soit.
+  exploitable: 'utilisables', // 'utilisables' | 'a_trier' | 'refuses' | 'tout'
   triStatus: '',       // filtre drawer : statut de tri
   flaggedOnly: false,  // 📌 n'afficher que ma sélection (colonne flagged)
   triRatingMin: 0,     // filtre drawer : note minimale
@@ -222,15 +223,44 @@ function debounce(fn, ms) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
+// Le sélecteur d'exploitabilité, appliqué à l'IDENTIQUE aux deux constructeurs de
+// requête — un seul endroit, pour ne plus reproduire l'oubli qui avait laissé les
+// vidéos sans filtre pendant que les photos l'avaient.
+//
+// Les colonnes ne sont pas les mêmes partout : seules les vidéos du dérushage ont
+// usable_for_reel, et les images générées n'ont même pas de colonne status. Écrire
+// une condition sur une colonne absente ferait échouer toute la requête.
+function appliquerExploitable(q, f) {
+  if (f.triStatus) return q;          // un statut choisi explicitement l'emporte
+  const t = mediaTable();
+  const aStatus = (t === 'video_library' || t === 'image_library');
+  const aUsable = (t === 'video_library');
+  const nonRejete = qq => aStatus ? qq.or('status.is.null,status.neq.rejected') : qq;
+  switch (f.exploitable) {
+    case 'utilisables':
+      q = q.eq('tri_status', 'ok');
+      if (aUsable) q = q.is('usable_for_reel', true);
+      return nonRejete(q);
+    case 'a_trier':
+      return nonRejete(q.or('tri_status.is.null,tri_status.eq.a_trier'));
+    case 'refuses':
+      return aStatus ? q.or('tri_status.eq.refuse,status.eq.rejected')
+                     : q.eq('tri_status', 'refuse');
+    default:
+      return q;                       // 'tout'
+  }
+}
+
 function loadFilters() {
   try {
     const raw = localStorage.getItem('library_filters_v2');
     if (!raw) return { ...DEFAULT_FILTERS };
     const parsed = JSON.parse(raw);
-    // « masquerRefuses » était la version à deux positions du sélecteur des refusés,
-    // remplacée par « refuses » qui en a trois. On l'efface au passage plutôt que de
-    // la traîner indéfiniment dans le navigateur.
+    // Anciennes versions du sélecteur (deux puis trois positions, centrées sur les
+    // refusés). Remplacées par « exploitable », qui pose la vraie question : est-ce
+    // que les moteurs de production peuvent s'en servir. On les efface au passage.
     delete parsed.masquerRefuses;
+    delete parsed.refuses;
     return { ...DEFAULT_FILTERS, ...parsed };
   } catch { return { ...DEFAULT_FILTERS }; }
 }
@@ -511,8 +541,7 @@ function buildImageQuery() {
   // statut choisi dans le tiroir) : une demande explicite passe avant un réglage
   // d'affichage. Le « or » avec is.null est indispensable — un simple neq écarterait
   // tout ce qui n'a pas encore de statut, c'est-à-dire l'essentiel du travail restant.
-  else if (!f.triStatus && f.refuses === 'seuls') q = q.eq('tri_status', 'refuse');
-  else if (!f.triStatus && f.refuses === 'masques') q = q.or('tri_status.is.null,tri_status.neq.refuse');
+  else q = appliquerExploitable(q, f);
   if (f.flaggedOnly) q = q.eq('flagged', true);
   if (f.search) {
     const s = f.search.replace(/[%_]/g, '');
@@ -785,13 +814,8 @@ function buildQuery() {
     q = q.eq('tri_status', 'refuse');
   } else if (f.triHide) {
     q = q.or('tri_status.eq.a_trier,and(tri_status.eq.ok,tri_rating.is.null),and(tri_status.eq.ok,tri_rating.eq.0)');
-  // Le sélecteur des refusés vaut aussi pour les vidéos. Il y a DEUX constructeurs
-  // de requête dans ce fichier — celui-ci et buildImageQuery — et n'en traiter qu'un
-  // donne un bouton qui ne fait rien sur la moitié de l'application.
-  } else if (!f.triStatus && f.refuses === 'seuls') {
-    q = q.eq('tri_status', 'refuse');
-  } else if (!f.triStatus && f.refuses === 'masques') {
-    q = q.or('tri_status.is.null,tri_status.neq.refuse');
+  } else {
+    q = appliquerExploitable(q, f);
   }
 
   // Filtres "Mon tri" (drawer)
@@ -1462,8 +1486,13 @@ function photoMatchesFilters(c) {
   if (f.triBug) { if (c.tri_status !== 'bug') return false; }
   else if (f.triRefused) { if (c.tri_status !== 'refuse') return false; }
   else if (f.triHide) { if (c.tri_status !== 'a_trier') return false; }
-  else if (!f.triStatus && f.refuses === 'seuls') { if (c.tri_status !== 'refuse') return false; }
-  else if (!f.triStatus && f.refuses === 'masques') { if (c.tri_status === 'refuse') return false; }
+  else if (!f.triStatus) {
+    const rejete = c.tri_status === 'refuse' || c.status === 'rejected';
+    const aTrier = !c.tri_status || c.tri_status === 'a_trier';
+    if (f.exploitable === 'utilisables' && (rejete || c.tri_status !== 'ok')) return false;
+    if (f.exploitable === 'a_trier' && (rejete || !aTrier)) return false;
+    if (f.exploitable === 'refuses' && !rejete) return false;
+  }
   return true;
 }
 
@@ -1942,26 +1971,32 @@ triBugCheckbox && triBugCheckbox.addEventListener('change', () => {
 // accessible en permanence — c'est un réglage d'affichage, pas un outil de tri.
 // Trois positions qui tournent en boucle à chaque clic.
 const REFUSES_POSITIONS = [
-  { cle: 'masques', texte: '🚫 Refusés masqués',        classe: 'active' },
-  { cle: 'seuls',   texte: '🔍 Seulement les refusés',  classe: 'seuls-refuses' },
-  { cle: 'tous',    texte: '👁️ Tout affiché',           classe: '' },
+  { cle: 'utilisables', texte: '✅ Utilisables',  classe: 'active',
+    aide: 'validés et exploitables par les moteurs de production' },
+  { cle: 'a_trier',     texte: '🕗 À trier',      classe: 'a-trier',
+    aide: 'pas encore décidés — donc pas exploitables non plus' },
+  { cle: 'refuses',     texte: '🚫 Refusés',      classe: 'seuls-refuses',
+    aide: 'écartés de la production, refusés ou rejetés' },
+  { cle: 'tout',        texte: '👁️ Tout',         classe: '',
+    aide: 'sans distinction' },
 ];
 const masquerRefusesBtn = $('masquer-refuses-btn');
 function refletRefuses() {
   if (!masquerRefusesBtn) return;
-  const i = Math.max(0, REFUSES_POSITIONS.findIndex(p => p.cle === state.filters.refuses));
+  const i = Math.max(0, REFUSES_POSITIONS.findIndex(p => p.cle === state.filters.exploitable));
   const pos = REFUSES_POSITIONS[i];
-  masquerRefusesBtn.classList.remove('active', 'seuls-refuses');
+  masquerRefusesBtn.classList.remove('active', 'a-trier', 'seuls-refuses');
   if (pos.classe) masquerRefusesBtn.classList.add(pos.classe);
   const lab = $('masquer-refuses-label');
   if (lab) lab.textContent = pos.texte;
   const suivant = REFUSES_POSITIONS[(i + 1) % REFUSES_POSITIONS.length];
-  masquerRefusesBtn.title = `Cliquer pour passer à « ${suivant.texte.replace(/^\S+\s/, '')} ». `
-    + `Rien n'est supprimé : les refusés restent en base dans tous les cas.`;
+  masquerRefusesBtn.title = `${pos.texte.replace(/^\S+\s/, '')} : ${pos.aide}.\n`
+    + `Cliquer pour passer à « ${suivant.texte.replace(/^\S+\s/, '')} ».\n`
+    + `Rien n'est supprimé : c'est un filtre d'affichage.`;
 }
 masquerRefusesBtn && masquerRefusesBtn.addEventListener('click', () => {
-  const i = Math.max(0, REFUSES_POSITIONS.findIndex(p => p.cle === state.filters.refuses));
-  state.filters.refuses = REFUSES_POSITIONS[(i + 1) % REFUSES_POSITIONS.length].cle;
+  const i = Math.max(0, REFUSES_POSITIONS.findIndex(p => p.cle === state.filters.exploitable));
+  state.filters.exploitable = REFUSES_POSITIONS[(i + 1) % REFUSES_POSITIONS.length].cle;
   refletRefuses();
   resetAndReload();
 });
@@ -2254,6 +2289,42 @@ async function deleteClipFull(c) {
   if (error) throw error;
 }
 
+// Colonnes de rejet selon la table : toutes n'ont pas les mêmes. Écrire une colonne
+// absente ferait échouer toute la mise à jour, silencieusement pour Jérôme.
+function champsDeRejet() {
+  const t = mediaTable();
+  const maj = { tri_status: 'refuse' };
+  // status et updated_at n'existent que sur les deux banques issues du dérushage ;
+  // usable_for_reel seulement sur les vidéos. Les images et vidéos générées n'ont
+  // que tri_status.
+  if (t === 'video_library' || t === 'image_library') {
+    maj.status = 'rejected';
+    maj.updated_at = new Date().toISOString();
+  }
+  if (t === 'video_library') maj.usable_for_reel = false;
+  return maj;
+}
+
+async function rejeterSelection() {
+  const ids = [...state.selection];
+  if (!ids.length) { toast('Aucune sélection'); return; }
+  const quoi = isVideoMode() ? 'vidéo(s)' : 'élément(s)';
+  if (!confirm(`Rejeter ${ids.length} ${quoi} ?\n\n`
+    + `Ils sortent de la production automatique (montage, photos).\n`
+    + `Rien n'est supprimé : les fichiers restent en base et sur le serveur.`)) return;
+  const maj = { ...champsDeRejet(), updated_at: new Date().toISOString() };
+  const { error } = await sb.from(mediaTable()).update(maj).in('id', ids);
+  if (error) { toast(error.message, 'error'); return; }
+  for (const id of ids) {
+    const c = state.clips.find(x => x.id === id);
+    if (c) Object.assign(c, maj);
+  }
+  state.selection.clear(); lastSelIndex = null;
+  updateSelectionBar(); updateCounts();
+  toast(`${ids.length} rejeté(s) — écartés de la production automatique`, 'success');
+  resetAndReload();
+}
+
 async function deleteSelectionAsDuplicates() {
   const ids = [...state.selection];
   if (!ids.length) { toast('Aucune sélection'); return; }
@@ -2277,6 +2348,37 @@ async function deleteSelectionAsDuplicates() {
   updateSelectionBar(); updateCounts(); renderGallery();
   toast(`${done} supprimée(s)${fail ? ` · ${fail} échec(s)` : ''}`, fail ? 'error' : 'info');
 }
+
+// Les trois bandeaux du haut (titre, onglets, filtres) restent visibles pendant le
+// défilement. Leurs hauteurs changent — l'en-tête passe de une à trois lignes selon
+// la largeur, la barre de sélection apparaît et disparaît — donc on les mesure au
+// lieu de les écrire en dur. Une valeur figée faisait glisser les filtres sous le
+// titre et Jérôme perdait recherche, tri et onglets dès qu'il descendait.
+function calerBandeaux() {
+  const r = document.documentElement.style;
+  // Une hauteur nulle veut dire « pas encore affiché » (écran de connexion) : on
+  // retire la variable pour que la valeur de repli du CSS reprenne la main, plutôt
+  // que de coller les bandeaux à zéro. Le ResizeObserver repassera à l'affichage.
+  const poser = (nom, el) => {
+    const h = el && el.offsetParent ? el.offsetHeight : 0;
+    if (h > 0) r.setProperty(nom, h + 'px');
+    else r.removeProperty(nom);
+  };
+  poser('--h-header', document.querySelector('header'));
+  poser('--h-tabs', document.getElementById('view-tabs'));
+}
+calerBandeaux();
+window.addEventListener('resize', calerBandeaux);
+if (window.ResizeObserver) {
+  const veille = new ResizeObserver(calerBandeaux);
+  ['header', '#view-tabs'].forEach(sel => {
+    const el = document.querySelector(sel);
+    if (el) veille.observe(el);
+  });
+}
+
+const rejeterSelBtn = $('rejeter-selection');
+rejeterSelBtn && rejeterSelBtn.addEventListener('click', rejeterSelection);
 
 const deleteDupesBtn = $('delete-dupes');
 deleteDupesBtn && deleteDupesBtn.addEventListener('click', deleteSelectionAsDuplicates);
@@ -2732,14 +2834,19 @@ async function saveModal(id) {
 }
 
 async function setStatus(id, status) {
-  const { error } = await sb
-    .from('video_library')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', id);
+  const maj = { status, updated_at: new Date().toISOString() };
+  // « Rejeter » doit rejeter pour de bon. La colonne status n'est lue par AUCUN
+  // worker : le montage automatique et l'extraction des photos vont chercher
+  // tri_status='ok' + usable_for_reel. Sans ces deux lignes, une vidéo rejetée
+  // continuait d'être reprise en production — l'inverse de ce que le bouton promet.
+  if (status === 'rejected') { maj.tri_status = 'refuse'; maj.usable_for_reel = false; }
+  const { error } = await sb.from('video_library').update(maj).eq('id', id);
   if (error) { toast(error.message, 'error'); return; }
   const idx = state.clips.findIndex(x => x.id === id);
-  if (idx > -1) state.clips[idx].status = status;
-  toast(`Statut → ${status}`, 'success');
+  if (idx > -1) Object.assign(state.clips[idx], maj);
+  toast(status === 'rejected'
+    ? 'Rejetée — écartée de la production automatique'
+    : `Statut → ${status}`, 'success');
   closeModal();
   resetAndReload();
 }
@@ -2997,7 +3104,9 @@ async function sendToSomaticaEditPicker(ordered) {
 const colsRange = document.getElementById('cols-range');
 const colsValEl = document.getElementById('cols-val');
 // Max de colonnes selon le média : vidéo 4, photos / images IA 16
-const COLS_MAX_BY_MODE = { video: 4, photo: 16, image: 16 };
+// 8 colonnes en vidéo : au-delà de 4 les vignettes passent en mode nu (tri-dense),
+// ce qui reste lisible pour balayer une longue série.
+const COLS_MAX_BY_MODE = { video: 8, photo: 16, image: 16 };
 function colsMax() { return COLS_MAX_BY_MODE[state.mediaType] || 4; }
 function colsStorageKey() { return state.mediaType === 'video' ? 'library_cols' : 'library_cols_img'; }
 function defaultColsForMode() {

@@ -61,12 +61,16 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
   backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(235, 211, 160, 0.1);
 }
-/* Sur desktop, header + filtres restent fixés en haut, seule la galerie scrolle */
+/* Sur desktop, header + onglets + filtres restent fixés en haut, seule la galerie
+   scrolle. Les hauteurs sont MESURÉES en JS (calerBandeaux) et non écrites en dur :
+   l'en-tête fait une à trois lignes selon la largeur de la fenêtre, et la valeur
+   fixe de 52 px d'avant faisait glisser les filtres sous le titre dès qu'il en
+   faisait plus d'une. Les valeurs de repli servent avant la première mesure. */
 @media (min-width: 768px) {
   .filters {
     position: sticky;
-    top: 52px; /* hauteur approx du header (padding 14px + title ~24px) */
-    z-index: 49;
+    top: calc(var(--h-header, 52px) + var(--h-tabs, 0px));
+    z-index: 48;
   }
 }
 .filters-row {
@@ -350,6 +354,8 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
    Rouge et non doré, pour qu'on ne confonde jamais cet état avec l'affichage
    habituel — c'est le seul où les bons éléments sont cachés. */
 .btn-tri-toggle.seuls-refuses { background: #e88a8a; color: #2b1414; border-color: #e88a8a; }
+/* « À trier » : orange, entre le validé et le refusé — ni l'un ni l'autre encore. */
+.btn-tri-toggle.a-trier { background: #e8c084; color: #2b2114; border-color: #e8c084; }
 
 .tri-bar { display: none; align-items: center; gap: 16px; flex-wrap: wrap; padding: 8px 0 2px; }
 body.tri-on .tri-bar { display: flex; }
@@ -843,7 +849,8 @@ body[data-media="image"] .photo-only { display: none; }
   display: flex; gap: 4px; padding: 8px 20px;
   background: rgba(13, 30, 37, 0.95);
   border-bottom: 1px solid rgba(235, 211, 160, 0.1);
-  position: sticky; top: 52px; z-index: 49;
+  /* juste sous l'en-tête, dont la hauteur est mesurée en JS (calerBandeaux) */
+  position: sticky; top: var(--h-header, 52px); z-index: 49;
   overflow-x: auto;
 }
 .view-tab {
@@ -1576,9 +1583,8 @@ body[data-media="image"] .photo-only { display: none; }
         <span>🏷️ Mode tri</span>
       </button>
 
-      <button class="btn-tri-toggle active" id="masquer-refuses-btn"
-              title="Les refusés restent en base — ils sont seulement écartés de l'affichage">
-        <span id="masquer-refuses-label">🚫 Refusés masqués</span>
+      <button class="btn-tri-toggle active" id="masquer-refuses-btn">
+        <span id="masquer-refuses-label">✅ Utilisables</span>
       </button>
     </div>
 
@@ -2126,6 +2132,8 @@ body[data-media="image"] .photo-only { display: none; }
   <div class="batch-tri" id="batch-tri"></div>
   <div class="actions">
     <button class="btn" id="clear-selection">Tout désélectionner</button>
+    <button class="btn danger" id="rejeter-selection"
+            title="Écarte la sélection de la production automatique. Rien n'est supprimé.">🚫 Rejeter</button>
     <button class="btn danger" id="delete-dupes">Supprimer (doublon)</button>
     <button class="btn primary" id="send-to-edit">Envoyer vers SomaticaEdit</button>
   </div>
