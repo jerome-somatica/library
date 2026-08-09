@@ -378,6 +378,9 @@ sb.auth.onAuthStateChange((_event, session) => {
 
 // ---------- CATALOGS (distinct values pour multi-select) ----------
 async function bootstrapCatalogs() {
+  // La liste partagée avec le dérusheur, avant tout le reste : elle décide des
+  // pastilles de pratique et de facilitateur, et des salles proposées.
+  await chargerVocabulaire();
   // On récupère les valeurs distinctes depuis un échantillon pour nourrir les multi-select.
   // Plus simple que des GROUP BY : on lit les 1000 premières lignes analysées.
   const { data, error } = await sb
@@ -685,8 +688,17 @@ function makeImageTriPanel(c, card) {
     salle.type = 'text'; salle.placeholder = 'salle / lieu…';
     salle.setAttribute('list', 'salles-list');
     salle.value = c.tri_salle || '';
-    const saveSalle = () => {
+    const saveSalle = async () => {
       const v = salle.value.trim();
+      // Salle inconnue des deux applications : on propose de l'ajouter à la liste
+      // partagée. Elle apparaîtra du coup aussi dans le dérusheur.
+      if (v && !VOCAB_SALLES.some(s => s.toLowerCase() === v.toLowerCase())
+            && !(state.catalog.salles || []).some(s => String(s).toLowerCase() === v.toLowerCase())) {
+        if (confirm(`« ${v} » n'est pas dans ta liste de salles.\n\nL'ajouter ?\n`
+                  + `Elle sera proposée ici et dans le dérusheur.`)) {
+          if (await ajouterAuVocabulaire('salle', v)) populateSallesDatalist();
+        }
+      }
       const ids = triTargets(c);
       for (const id of ids) {
         const cc = state.clips.find(x => x.id === id);
@@ -945,7 +957,9 @@ async function loadMore() {
   }
   if (!data || !data.length) {
     state.finished = true;
-    renderGallery();
+    // déjà des cartes à l'écran : on ne refait pas la grille pour un simple
+    // « c'est fini », on remplace juste le repère de bas de page
+    if (state.clips.length) { majSentinelle(); updateCounts(); } else renderGallery();
     return;
   }
   // Enrichir avec l'usage (vw_video_library_usage) avant d'afficher
@@ -953,7 +967,7 @@ async function loadMore() {
   state.clips.push(...data);
   state.page += 1;
   if (data.length < PAGE_SIZE) state.finished = true;
-  renderGallery();
+  appendClips(data);
 }
 
 // Cache des IDs "utilisés" pour le filtre usage (rechargé quand filtre change)
@@ -1040,6 +1054,52 @@ function getScrollObserver() {
   return scrollObserver;
 }
 
+// Le repère de bas de page : le bloc qui déclenche le chargement suivant quand il
+// entre dans l'écran. On le DÉPLACE au lieu de le recréer, sinon l'observateur perd
+// sa cible à chaque page.
+function majSentinelle() {
+  const enCours = document.getElementById('sentinel');
+  const ancienneFin = gallery.querySelector('.sentinel:not(#sentinel)');
+  if (ancienneFin) ancienneFin.remove();
+
+  if (!state.finished) {
+    let s = enCours;
+    if (!s) {
+      s = document.createElement('div');
+      s.className = 'sentinel';
+      s.id = 'sentinel';
+      s.textContent = 'Chargement…';
+    }
+    gallery.appendChild(s);          // toujours le dernier élément
+    getScrollObserver().observe(s);
+    return;
+  }
+  if (enCours) enCours.remove();
+  if (state.clips.length > PAGE_SIZE) {
+    const fin = document.createElement('div');
+    fin.className = 'sentinel';
+    fin.textContent = `— fin (${state.clips.length} clips) —`;
+    gallery.appendChild(fin);
+  }
+}
+
+// N'ajoute QUE les cartes qui viennent d'arriver.
+//
+// Avant, chaque page de 60 vidait la galerie et la reconstruisait entièrement :
+// après dix défilements, charger 60 clips de plus en recréait 660, soit des dizaines
+// de milliers d'éléments. C'est ce qui faisait ramer la page au fil du défilement,
+// et repartir les vignettes de zéro — d'où leur clignotement.
+function appendClips(nouveaux) {
+  if (!nouveaux || !nouveaux.length) { majSentinelle(); updateCounts(); return; }
+  // rien à l'écran encore (premier lot, ou message de chargement) : rendu complet
+  if (!gallery.querySelector('.card')) { renderGallery(); return; }
+  const frag = document.createDocumentFragment();
+  for (const c of nouveaux) frag.appendChild(makeCard(c));
+  gallery.appendChild(frag);
+  majSentinelle();
+  updateCounts();
+}
+
 function renderGallery() {
   if (!state.clips.length) {
     gallery.innerHTML = '<div class="empty-state"><h2>Aucun clip</h2><p>Ajuste tes filtres.</p></div>';
@@ -1050,26 +1110,10 @@ function renderGallery() {
   for (const c of state.clips) {
     frag.appendChild(makeCard(c));
   }
-  // Ajouter le sentinel si pas fini
-  if (!state.finished) {
-    const sentinel = document.createElement('div');
-    sentinel.className = 'sentinel';
-    sentinel.id = 'sentinel';
-    sentinel.textContent = 'Chargement...';
-    frag.appendChild(sentinel);
-  } else if (state.clips.length > PAGE_SIZE) {
-    const end = document.createElement('div');
-    end.className = 'sentinel';
-    end.textContent = `— fin (${state.clips.length} clips) —`;
-    frag.appendChild(end);
-  }
   gallery.innerHTML = '';
   gallery.appendChild(frag);
+  majSentinelle();
   updateCounts();
-
-  // Observer le sentinel
-  const sentinel = document.getElementById('sentinel');
-  if (sentinel) getScrollObserver().observe(sentinel);
 }
 
 function makeCard(c) {
@@ -1324,7 +1368,11 @@ const TRI_CASES = [
 ];
 
 // Pratiques de transe (Innerdance couvre aussi la Kundalini Activation)
-const TRI_PRACTICES = [
+// Ces listes sont les valeurs de DÉPART. Elles sont remplacées au chargement par la
+// liste partagée avec le dérusheur (table somatica_vocabulaire) : avant, chaque
+// application avait la sienne écrite en dur, et ajouter une pratique d'un côté ne
+// la faisait jamais apparaître de l'autre.
+let TRI_PRACTICES = [
   ['innerdance', 'Innerdance'],
   ['breathwork', 'Breathwork'],
   ['qi_cleansing', 'Qi cleansing'],
@@ -1332,11 +1380,59 @@ const TRI_PRACTICES = [
 ];
 
 // Facilitateur (photos) : qui anime sur l'image (exclusif)
-const TRI_FACILITATEUR = [
+let TRI_FACILITATEUR = [
   ['facil_jerome', 'Jérôme'],
   ['facil_nath', 'Nath'],
   ['facil_duo', 'Les deux'],
 ];
+
+// Salles et villes proposées dans le champ « salle / lieu ». Remplies depuis la
+// liste partagée ; le champ reste libre, on peut toujours écrire autre chose.
+let VOCAB_SALLES = [];
+
+// Le dérusheur écrit ses étiquettes en minuscules sans accent : « qi_cleansing »,
+// « facil_jerome ». On retrouve la même forme ici, sinon les pastilles ne
+// s'allumeraient pas sur les clips qu'il a étiquetés.
+function vocabCle(prefixe, valeur) {
+  const s = String(valeur).normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  return prefixe ? prefixe + s : s;
+}
+
+async function chargerVocabulaire() {
+  try {
+    const { data, error } = await sb.from('somatica_vocabulaire')
+      .select('famille,valeur,parent,ordre').eq('actif', true).order('ordre');
+    if (error || !data || !data.length) return;   // on garde les valeurs de départ
+    const par = f => data.filter(x => x.famille === f);
+    const prat = par('pratique');
+    if (prat.length) TRI_PRACTICES = prat.map(x => [vocabCle('', x.valeur), x.valeur]);
+    const faci = par('facilitateur');
+    if (faci.length) TRI_FACILITATEUR = faci.map(x => {
+      const v = x.valeur.toLowerCase();
+      const cle = v.includes('deux') || v.includes('&') ? 'facil_duo' : vocabCle('facil_', x.valeur);
+      return [cle, x.valeur];
+    });
+    VOCAB_SALLES = [
+      ...par('salle').map(x => x.parent ? `${x.parent} · ${x.valeur}` : x.valeur),
+      ...par('ville').map(x => x.valeur),
+    ];
+  } catch (e) { /* liste de départ conservée */ }
+}
+
+// Ajoute une valeur à la liste partagée : elle apparaîtra aussi dans le dérusheur.
+async function ajouterAuVocabulaire(famille, valeur, parent) {
+  const v = String(valeur || '').trim();
+  if (!v) return false;
+  const { error } = await sb.from('somatica_vocabulaire')
+    .insert({ famille, valeur: v, parent: parent || null, ordre: 500 });
+  if (error && !String(error.message || '').includes('duplicate')) {
+    toast('Ajout impossible : ' + error.message, 'error');
+    return false;
+  }
+  await chargerVocabulaire();
+  return true;
+}
 
 // Rendu d'une ligne de cases à cocher (tags) pour une liste donnée
 function triDivider() {
@@ -1404,8 +1500,15 @@ function harvestParticipantes(v) {
 function populateSallesDatalist() {
   const dl = document.getElementById('salles-list');
   if (!dl) return;
-  const names = [...(state.catalog.salles || [])].sort((a, b) => a.localeCompare(b));
-  dl.innerHTML = names.map(n => `<option value="${escapeAttr(n)}"></option>`).join('');
+  // La liste partagée avec le dérusheur d'abord, dans SON ordre — c'est là que
+  // Jérôme tient ses vraies salles. Viennent ensuite les valeurs déjà saisies ici
+  // et qui n'y figurent pas, pour ne rien perdre de l'existant.
+  const vus = new Set(VOCAB_SALLES.map(s => String(s).toLowerCase()));
+  const autres = [...(state.catalog.salles || [])]
+    .filter(n => n && !vus.has(String(n).toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
+  dl.innerHTML = [...VOCAB_SALLES, ...autres]
+    .map(n => `<option value="${escapeAttr(n)}"></option>`).join('');
 }
 function populateSalleSelect() {
   const el = document.getElementById('pf-salle');
@@ -1906,8 +2009,9 @@ if (selFlag) selFlag.addEventListener('click', async () => {
   if (error) { console.error('signaler', error); if (typeof toast === 'function') toast('Erreur : ' + error.message); return; }
   ids.forEach(id => { const cc = state.clips.find(x => x.id === id); if (cc) cc.flagged = true; });
   if (typeof toast === 'function') toast(`${ids.length} dans ma sélection 📌`);
-  state.selection.clear();
-  if (typeof renderGallery === 'function') renderGallery();
+  // rien à repeindre : « signalé » n'a pas de marque sur la carte, seule la case
+  // à cocher change. La reconstruction complète d'avant ne montrait rien de plus.
+  viderSelection();
   updateFlaggedCount();
 });
 const selView = document.getElementById('sel-view');
@@ -2133,12 +2237,37 @@ const FILTER_LABELS = {
   qualityMin:   (v) => `Qualité ≥ ${v}`,
 };
 
+// Quelles clés de filtre agissent vraiment sur quelle banque.
+//
+// Le tiroir les propose toutes, mais buildImageQuery en ignore une bonne partie :
+// en mode Photo, Ambiance, Mouvement, Lumière, Lieu, Durée, Émotions, Personnes,
+// Musique, Paroles, Qualité et Analyse ne font RIEN. Sans ce garde-fou la pastille
+// annonçait « Filtres 5 » alors qu'aucun des cinq ne s'appliquait, et les étiquettes
+// affichaient fièrement des réglages sans effet.
+const CLES_VIDEO_SEULEMENT = new Set([
+  'ambiance', 'movement', 'lighting', 'location', 'duration', 'emotions', 'tags',
+  'persons', 'personsNames', 'music', 'speech', 'qualityMin', 'analysis',
+  'usableReel', 'usage', 'status',
+]);
+const CLES_PHOTO_SEULEMENT = new Set(['triSalle', 'triFacilitateur', 'triTagged']);
+
+function sAppliqueIci(key) {
+  return isVideoMode() ? !CLES_PHOTO_SEULEMENT.has(key) : !CLES_VIDEO_SEULEMENT.has(key);
+}
+
 function isActiveValue(key, val) {
   if (key === 'usableReel') return val === true;
   if (key === 'qualityMin') return Number(val) > 0;
   if (key === 'triRatingMin') return Number(val) > 0;
-  if (key === 'status') return val && val !== 'available'; // 'available' = défaut
   if (key === 'sort') return false; // sort caché des chips
+  // Un booléen à false n'est PAS un filtre posé. Le test « différent de vide »
+  // laissait passer false : la pastille affichait un socle permanent de cinq
+  // « filtres actifs » (triHide, triRefused, triBug, flaggedOnly…) alors que rien
+  // n'était réglé, et ne redescendait donc jamais à zéro.
+  if (typeof val === 'boolean') return val === true;
+  // Le sélecteur d'exploitabilité a son propre bouton, toujours sous les yeux.
+  // Sa position d'accueil n'est pas un filtre qu'on aurait posé.
+  if (key === 'exploitable') return val && val !== 'utilisables';
   if (Array.isArray(val)) return val.length > 0;
   return val !== '' && val != null;
 }
@@ -2149,6 +2278,7 @@ function renderActiveChips() {
   const f = state.filters;
 
   for (const [key, val] of Object.entries(f)) {
+    if (!sAppliqueIci(key)) continue;   // pas d'étiquette pour un réglage sans effet
     if (!isActiveValue(key, val)) continue;
     if (Array.isArray(val)) {
       val.forEach((v) => chips.push({ key, val: v, label: `${key === 'emotions' ? 'Émotion' : key === 'tags' ? 'Tag' : '👤'} : ${v}`, isMulti: true }));
@@ -2200,6 +2330,7 @@ function updateFiltersBadge() {
   const f = state.filters;
   let count = 0;
   for (const [key, val] of Object.entries(f)) {
+    if (!sAppliqueIci(key)) continue;   // ne compte pas ce qui n'agit pas ici
     if (isActiveValue(key, val)) {
       if (Array.isArray(val)) count += val.length;
       else count += 1;
@@ -2218,6 +2349,17 @@ setTimeout(() => { renderActiveChips(); updateFiltersBadge(); }, 100);
 
 // ---------- SELECTION ----------
 let lastSelIndex = null;
+// Vider la sélection ne demande pas de reconstruire la grille : il suffit de
+// décocher les cartes concernées. Chaque « tout désélectionner » recréait des
+// centaines de cartes et relançait le chargement de toutes leurs vignettes.
+function viderSelection() {
+  const ids = [...state.selection];
+  state.selection.clear();
+  lastSelIndex = null;
+  ids.forEach(paintCardSelection);
+  updateSelectionBar();
+}
+
 function paintCardSelection(id) {
   const card = gallery.querySelector(`.card[data-id="${id}"]`);
   if (!card) return;
@@ -2263,9 +2405,7 @@ function updateSelectionBar() {
 }
 
 clearSelectionBtn.addEventListener('click', () => {
-  state.selection.clear();
-  updateSelectionBar();
-  renderGallery();
+  viderSelection();
 });
 
 sendToEditBtn.addEventListener('click', sendToSomaticaEdit);

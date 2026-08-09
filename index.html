@@ -82,6 +82,13 @@ header .count { font-size: 13px; opacity: 0.6; font-weight: 400; }
 }
 /* Les réglages qui défilent : préréglages, barre du mode tri, largeur de grille. */
 .reglages-galerie { padding-bottom: 2px; }
+
+/* Hors mode vidéo, on masque ce qui n'agit sur RIEN : les sections Contenu,
+   Technique et Statut du tiroir, l'accès rapide, et la rangée de préréglages.
+   La requête photo les ignore toutes — les laisser visibles, c'était promettre
+   des filtres qui ne filtrent pas. */
+body.media-non-video .video-seulement,
+body.media-non-video #presets-row { display: none; }
 .filters-row {
   padding: 10px 20px;
   display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
@@ -378,8 +385,14 @@ body.tri-on .card .tri-panel {
   border-top: 1px solid rgba(235,211,160,0.15);
   background: #0c2630;
 }
-/* Grille dense (plus de 4 colonnes) : vignettes nues, on tague via la barre du bas commune */
-body.tri-on.tri-dense .card .tri-panel { display: none; }
+/* Grille dense (plus de 4 colonnes) : le panneau de tri RESTE, en version resserrée.
+   Il était purement et simplement masqué — on perdait les étoiles et les étiquettes
+   dès qu'on élargissait la grille, alors que c'est justement là qu'on balaie vite
+   une longue série et qu'on en a le plus besoin. */
+body.tri-on.tri-dense .card .tri-panel { padding: 5px 6px 6px; }
+body.tri-on.tri-dense .card .tri-panel .tri-row { gap: 3px; margin-bottom: 4px; }
+body.tri-on.tri-dense .card .tri-stars .st { font-size: 14px; padding: 1px 1px; }
+body.tri-on.tri-dense .card .tri-panel .tri-note { display: none; }  /* la note écrite passe par la fiche */
 body.tri-on.tri-dense .card { cursor: pointer; }
 body.tri-on .card.tri-ok { border-color: #7fc77f; box-shadow: 0 0 0 2px rgba(127,199,127,0.4); }
 body.tri-on .card.tri-refuse { border-color: #d98a8a; opacity: 0.5; }
@@ -1714,7 +1727,7 @@ body[data-media="image"] .photo-only { display: none; }
 
     <div class="drawer-body">
 
-      <section class="drawer-section">
+      <section class="drawer-section video-seulement">
         <h4>Quick access</h4>
         <div class="drawer-field">
           <label for="usable-reel">✨ Prêt pour Reel</label>
@@ -1784,7 +1797,7 @@ body[data-media="image"] .photo-only { display: none; }
         </div>
       </section>
 
-      <section class="drawer-section">
+      <section class="drawer-section video-seulement">
         <h4>Contenu</h4>
         <div class="drawer-field">
           <label for="intensity-filter">🎭 Intensité</label>
@@ -1833,7 +1846,7 @@ body[data-media="image"] .photo-only { display: none; }
         </div>
       </section>
 
-      <section class="drawer-section">
+      <section class="drawer-section video-seulement">
         <h4>Technique</h4>
         <div class="drawer-field">
           <label for="ambiance-filter">Ambiance</label>
@@ -1884,7 +1897,7 @@ body[data-media="image"] .photo-only { display: none; }
         </div>
       </section>
 
-      <section class="drawer-section">
+      <section class="drawer-section video-seulement">
         <h4>Statut</h4>
         <div class="drawer-field">
           <label for="status-filter">Statut clip</label>
