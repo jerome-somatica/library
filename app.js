@@ -972,10 +972,40 @@ function construireChoisir(tiroir) {
   brancher('fc-risque', 'risque');
   brancher('fc-publie', 'publie');
 
+  /* « Retrouver » : on DEPLACE les commandes existantes, on n'en cree pas de
+     nouvelles. Leurs gestionnaires sont attaches aux elements — participante,
+     lieu, pratique, duree continuent de fonctionner exactement pareil, ils
+     changent juste de place. Le curseur de qualite remonte dans « Choisir » :
+     quality_score porte desormais la note d'accroche, autant le dire. */
+  const champDe = (id) => {
+    const el = document.getElementById(id);
+    return el ? (el.closest('.drawer-field') || el) : null;
+  };
+  const monter = (dest, id, libelle) => {
+    const champ = champDe(id);
+    if (!champ) return;
+    const lab = champ.querySelector('label');
+    if (lab && libelle) lab.textContent = libelle;
+    dest.appendChild(champ);
+  };
+
+  monter(sec, 'quality-slider', 'Note d’accroche minimum');
+
+  const rec = document.createElement('section');
+  rec.className = 'drawer-section retrouver';
+  rec.innerHTML = '<h4>Retrouver</h4>';
+  monter(rec, 'tri-participante-filter', 'Participante');
+  monter(rec, 'location-filter', 'Lieu');
+  monter(rec, 'tri-pratique-filter', 'Pratique');
+  monter(rec, 'duration-filter', 'Durée');
+  if (rec.querySelectorAll('.drawer-field').length) {
+    sec.insertAdjacentElement('afterend', rec);
+  }
+
   // Ce qui reste descend derriere un repli. Les sections gardent leurs
   // identifiants et leurs gestionnaires : on ne fait que les deplacer.
   const anciennes = [...tiroir.querySelectorAll('.drawer-section')]
-    .filter(x => !x.classList.contains('choisir') && !x.dataset.garde);
+    .filter(x => !x.classList.contains('choisir') && !x.classList.contains('retrouver') && !x.dataset.garde);
   if (!anciennes.length) return;
   const boite = document.createElement('div');
   boite.className = 'drawer-anciens';
