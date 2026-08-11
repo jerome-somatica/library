@@ -2306,7 +2306,10 @@ header #sel-flag, header #sel-clear { margin-left: 0; }
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <datalist id="participantes-list"></datalist>
 <datalist id="salles-list"></datalist>
-<script src="app.js?v=20260713c"></script>
-<script src="admin.js?v=20260713c"></script>
+<!-- Le ?v= est la clé de cache du navigateur. Fige au 13 juillet, il servait
+     l'ancien app.js meme quand Netlify en deployait un neuf : trois deploiements
+     de suite n'ont rien change a l'ecran. A BUMPER A CHAQUE FOIS. -->
+<script src="app.js?v=20260811a"></script>
+<script src="admin.js?v=20260811a"></script>
 </body>
 </html>
