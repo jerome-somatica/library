@@ -1485,6 +1485,47 @@ body[data-media="image"] .photo-only { display: none; }
   transition: background 0.15s;
 }
 .montee-actions a:hover { background: rgba(235,211,160,0.18); }
+/* Le point de risque sur la vignette : discret, mais on ne peut pas le rater. */
+.risque-point { position: absolute; top: .35rem; right: 2.6rem; width: 8px; height: 8px;
+                border-radius: 50%; background: #e88a8a;
+                box-shadow: 0 0 0 2px rgba(0,0,0,.5); z-index: 3; }
+
+/* ═══ Les notes de cible, dans la fiche d'un clip ou d'une photo ═══
+   Quatre notes sur 10, le risque, le verdict, l'accroche. Tout vient de
+   gemini_raw / analysis_raw, chargé à l'ouverture seulement. */
+.notes-cible { margin-top: .9rem; padding-top: .9rem; border-top: 1px solid var(--border, #1d3a47); }
+.notes-attente { font-size: .78rem; color: var(--muted, #98a8b0); }
+.notes-tete { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-bottom: .5rem; }
+.notes-tete span { font-size: .72rem; padding: .15rem .5rem; border-radius: 999px;
+                   border: 1px solid var(--border, #1d3a47); color: var(--muted, #98a8b0); }
+.notes-tete .verdict.ok { color: #87d6ad; border-color: rgba(135,214,173,.45); }
+.notes-tete .verdict.attention { color: #e8c084; border-color: rgba(232,192,132,.45); }
+.notes-tete .verdict.mauvais { color: #e88a8a; border-color: rgba(232,138,138,.45); }
+.notes-tete .cible { color: #ebd3a0; border-color: rgba(235,211,160,.4); }
+.notes-tete .risque { color: #e88a8a; border-color: rgba(232,138,138,.4); }
+.notes-pourquoi { font-size: .78rem; color: var(--muted, #98a8b0); margin: 0 0 .5rem; }
+.notes-accroche { font-size: .98rem; line-height: 1.35; color: var(--text, #f5eee1);
+                  border-left: 2px solid #ebd3a0; padding-left: .6rem; margin: 0 0 .7rem; }
+.jauges { display: grid; gap: .3rem; margin-bottom: .6rem; }
+.jauge { display: grid; grid-template-columns: 72px 1fr 26px; gap: .5rem; align-items: center; }
+.jauge .j-k { font-size: .74rem; color: var(--muted, #98a8b0); }
+.jauge .j-b { height: 5px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; }
+.jauge .j-b i { display: block; height: 100%; background: #ebd3a0; border-radius: 3px; }
+.jauge .j-n { font-size: .76rem; text-align: right; font-variant-numeric: tabular-nums;
+              color: var(--text, #f5eee1); font-weight: 600; }
+.jauge.risque .j-b i { background: #e88a8a; }
+.jauge.risque .j-n { color: #e88a8a; }
+.notes-sig { display: flex; gap: .3rem; flex-wrap: wrap; margin-bottom: .6rem; }
+.notes-sig span { font-size: .7rem; color: #a99bd6; border: 1px solid rgba(169,155,214,.35);
+                  border-radius: 999px; padding: .12rem .45rem; }
+.notes-txt .label { font-size: .68rem; text-transform: uppercase; letter-spacing: .07em;
+                    color: var(--muted, #98a8b0); margin-bottom: .25rem; }
+.notes-txt p { font-size: .82rem; line-height: 1.45; margin: 0 0 .4rem;
+               color: var(--text, #f5eee1); }
+.copier-txt { background: none; border: 1px solid var(--border, #1d3a47); border-radius: 6px;
+              color: var(--muted, #98a8b0); font-size: .72rem; padding: .2rem .55rem; cursor: pointer; }
+.copier-txt:hover { color: var(--text, #f5eee1); border-color: #a78448; }
+
 /* ===== Onglet Enregistrements (replays des lives) ===== */
 .rec-wrap { padding: 20px; max-width: 1200px; margin: 0 auto; }
 .rec-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }

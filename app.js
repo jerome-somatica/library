@@ -781,8 +781,112 @@ function openImageModal(c) {
       else { const t = linkRow.querySelector('input'); t.select(); try { document.execCommand('copy'); done(); } catch (e) {} }
     });
   }
+  chargerNotes(c);
   modalBg.classList.add('active');
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   LES NOTES DE CIBLE
+
+   Elles sont écrites dans gemini_raw (photos) et analysis_raw (vidéos), pas
+   dans des colonnes : quatre notes sur 10, le risque de blocage, la cible,
+   le verdict, une accroche et un descriptif publiables.
+
+   Ces deux colonnes sont volontairement EXCLUES de la requête de la galerie
+   (LIGHT_COLS) parce qu'elles sont lourdes et plombaient le chargement. On
+   les demande donc UNE SEULE fois, à l'ouverture d'une carte, et on garde le
+   résultat en mémoire pour ne pas y revenir.
+   ════════════════════════════════════════════════════════════════════════ */
+const NOTES_CACHE = new Map();
+const COL_BRUT = { photo: 'gemini_raw', video: 'analysis_raw' };
+
+function nParM(n, max) {           // largeur de la jauge, sur 10
+  return Math.max(0, Math.min(100, (Number(n) || 0) / (max || 10) * 100));
+}
+
+async function chargerNotes(c) {
+  const col = COL_BRUT[state.mediaType];
+  if (!col || !c || !c.id) return;                 // banques IA : pas de notes
+
+  const bloc = document.createElement('div');
+  bloc.className = 'notes-cible';
+  bloc.innerHTML = '<div class="notes-attente">Notes…</div>';
+  modalBody.appendChild(bloc);
+
+  let brut = NOTES_CACHE.get(c.id);
+  if (brut === undefined) {
+    try {
+      const { data } = await sb.from(mediaTable()).select(col).eq('id', c.id).single();
+      brut = (data && data[col]) || null;
+      NOTES_CACHE.set(c.id, brut);
+    } catch (e) { brut = null; }
+  }
+  // la carte a pu être refermée pendant la requête
+  if (state.currentModalId !== c.id) { bloc.remove(); return; }
+  if (!brut || brut.note_accroche == null) {
+    bloc.innerHTML = '<div class="notes-attente">Pas encore noté — le rattrapage le prendra.</div>';
+    return;
+  }
+  dessinerNotes(bloc, brut);
+}
+
+function dessinerNotes(bloc, b) {
+  const NOTES = [
+    ['Séance', b.note_seance], ['Formation', b.note_formation],
+    ['Accroche', b.note_accroche], ['Émotion', b.note_emotion],
+  ];
+  const VERDICTS = {
+    tel_quel: ['Utilisable tel quel', 'ok'], a_recadrer: ['À recadrer', 'attention'],
+    a_retoucher: ['À retoucher', 'attention'], a_ecarter: ['À écarter', 'mauvais'],
+  };
+  const v = VERDICTS[b.verdict] || [b.verdict || '—', ''];
+  const risque = Number(b.risque_blocage) || 0;
+
+  const sig = [];
+  if (b.casque_audio) sig.push('séance spatialisée' + (b.casque_led_couleur ? ' · casque ' + b.casque_led_couleur : ''));
+  if (b.masque_yeux) sig.push('masque sur les yeux');
+  if (b.text_overlay_space && b.text_overlay_space !== 'aucun') sig.push('texte possible en ' + b.text_overlay_space);
+  if (b.position_sujet) sig.push('sujet ' + b.position_sujet);
+
+  bloc.innerHTML = `
+    <div class="notes-tete">
+      <span class="verdict ${v[1]}">${escapeHtml(v[0])}</span>
+      ${b.cible_principale ? `<span class="cible">${escapeHtml(cibleMot(b.cible_principale))}</span>` : ''}
+      ${risque >= 4 ? `<span class="risque">risque ${risque}/10</span>` : ''}
+    </div>
+    ${b.pourquoi && b.verdict !== 'tel_quel' ? `<p class="notes-pourquoi">${escapeHtml(b.pourquoi)}</p>` : ''}
+    ${b.accroche ? `<p class="notes-accroche">${escapeHtml(b.accroche)}</p>` : ''}
+    <div class="jauges">
+      ${NOTES.map(([k, n]) => `
+        <div class="jauge"><span class="j-k">${k}</span>
+          <span class="j-b"><i style="width:${nParM(n)}%"></i></span>
+          <span class="j-n">${n == null ? '—' : n}</span></div>`).join('')}
+      <div class="jauge risque"><span class="j-k">Risque</span>
+        <span class="j-b"><i style="width:${nParM(risque)}%"></i></span>
+        <span class="j-n">${risque}</span></div>
+    </div>
+    ${sig.length ? `<div class="notes-sig">${sig.map(s => `<span>${escapeHtml(s)}</span>`).join('')}</div>` : ''}
+    ${b.description_reseaux ? `
+      <div class="notes-txt">
+        <div class="label">Descriptif pour les réseaux</div>
+        <p>${escapeHtml(b.description_reseaux)}</p>
+        <button class="copier-txt" type="button">Copier</button>
+      </div>` : ''}`;
+
+  const btn = bloc.querySelector('.copier-txt');
+  if (btn) btn.addEventListener('click', () => {
+    const t = [b.accroche, b.description_reseaux].filter(Boolean).join('\n\n');
+    if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => {
+      btn.textContent = 'Copié'; setTimeout(() => { btn.textContent = 'Copier'; }, 1500);
+    });
+  });
+}
+
+function cibleMot(c) {
+  return { seance: 'Pour les séances', formation: 'Pour la formation',
+           les_deux: 'Les deux cibles', aucune: 'Aucune cible' }[c] || c;
+}
+
 function setMediaType(type) {
   if (!MEDIA[type] || type === state.mediaType) return;
   state.mediaType = type;
@@ -1267,12 +1371,25 @@ function makeCard(c) {
     thumb.appendChild(b);
   }
 
-  // quality badge (si analysé)
+  // La note d'accroche — « est-ce qu'on arrête de faire défiler ». Elle vit dans
+  // quality_score, qui mettait 7 ou 8 à 1767 clips sur 1824 avant qu'on la remplace :
+  // elle ne mesurait rien. L'étoile prêtait à confusion avec les étoiles du tri, qui
+  // sont TES notes à toi. On écrit donc le chiffre nu, avec le mot au survol.
   if (c.quality_score != null) {
     const qb = document.createElement('div');
     qb.className = 'quality-score';
-    qb.textContent = `⭐ ${Number(c.quality_score).toFixed(1)}`;
+    qb.textContent = Number(c.quality_score).toFixed(0);
+    qb.title = 'Note d’accroche : ' + Number(c.quality_score).toFixed(0) + '/10';
     thumb.appendChild(qb);
+  }
+
+  // Risque de restriction par un réseau social. Ce qui accroche le plus est souvent
+  // ce qui expose le plus : 125 clips passent 6/10, et ce sont les meilleurs.
+  if (c.flagged) {
+    const rb = document.createElement('div');
+    rb.className = 'risque-point';
+    rb.title = 'Risque de restriction élevé — ouvre la fiche pour la raison';
+    thumb.appendChild(rb);
   }
 
   // usable for reel pastille
