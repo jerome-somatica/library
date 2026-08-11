@@ -82,6 +82,10 @@ const DEFAULT_FILTERS = {
   location: '',
   persons: '',
   qualityMin: 0,
+  // Les notes ecrites par l'analyse. Elles vivent dans analysis_raw (clips, banques
+  // generees) ou gemini_raw (photos) — d'ou le chemin JSON dans la requete plutot
+  // qu'un nom de colonne. Mesure : ~100 ms, autant qu'une colonne ordinaire.
+  cible: '', verdict: '', risque: '', publie: '',
   intensity: '',
   music: '',     // '' | 'with' | 'without'
   speech: '',    // '' | 'with' | 'without'
@@ -522,6 +526,8 @@ function imageCols() {
 }
 function buildImageQuery() {
   let q = sb.from(mediaTable()).select(imageCols(), { count: 'exact' });
+  // photos : gemini_raw · banques generees : analysis_raw
+  q = appliquerNotes(q, state.filters, state.mediaType === 'photo' ? 'gemini_raw' : 'analysis_raw');
   const f = state.filters;
   if (f.triStatus) q = q.eq('tri_status', f.triStatus);
   if (f.triRatingMin > 0) q = q.gte('tri_rating', f.triRatingMin);
@@ -551,7 +557,20 @@ function buildImageQuery() {
   if (f.flaggedOnly) q = q.eq('flagged', true);
   if (f.search) {
     const s = f.search.replace(/[%_]/g, '');
-    const cols = state.mediaType === 'photo' ? ['filename', 'subject', 'category', 'ambiance'] : ['prompt', 'model', 'source'];
+    // Photos : on ajoute ce que l'analyse a ecrit (accroche, descriptif, description
+    // courte). Images IA : le prompt reste la seule matiere tant qu'elles ne sont pas
+    // analysees — 1770 attendent, et c'est la que la recherche gagnera le plus.
+    const cols = state.mediaType === 'photo'
+      ? ['filename', 'subject', 'category', 'ambiance',
+         'gemini_raw->>accroche', 'gemini_raw->>description_reseaux',
+         'gemini_raw->>description_short']
+      // Images et videos IA : la colonne analysis_raw a ete ajoutee le 11/08, au meme
+      // nom que sur video_library — d'ou la recherche identique. Tant qu'elles ne sont
+      // pas analysees, seul le prompt repond ; ensuite elles deviennent cherchables en
+      // francais, par ce qu'elles montrent et non par ce qu'on a tape pour les fabriquer.
+      : ['prompt', 'model', 'source', 'tri_note',
+         'analysis_raw->>accroche', 'analysis_raw->>description_reseaux',
+         'analysis_raw->>ce_qui_se_passe'];
     q = q.or(cols.map(c => `${c}.ilike.%${s}%`).join(','));
   }
   return q.order('created_at', { ascending: false, nullsFirst: false });
@@ -809,6 +828,19 @@ function openImageModal(c) {
    Ce qui reste visible répond aux questions qu'on se pose vraiment :
    dans quelle banque je suis, qu'est-ce qui est utilisable, et je cherche quoi.
    ════════════════════════════════════════════════════════════════════════ */
+/* Les filtres qui interrogent les notes de l'analyse. Le nom de la colonne change
+   selon la banque — analysis_raw pour les clips et les banques generees, gemini_raw
+   pour les photos — mais les cles a l'interieur sont les memes partout. */
+function appliquerNotes(q, f, col) {
+  if (f.cible) q = q.eq(`${col}->>cible_principale`, f.cible);
+  if (f.verdict) q = q.eq(`${col}->>verdict`, f.verdict);
+  if (f.risque === 'faible') q = q.eq('flagged', false);
+  if (f.risque === 'eleve') q = q.eq('flagged', true);
+  if (f.publie === 'jamais') q = q.is('used_in_reels', null);
+  if (f.publie === 'deja') q = q.not('used_in_reels', 'is', null);
+  return q;
+}
+
 function allegerBarre() {
   const tiroir = document.querySelector('.drawer-body');
   if (!tiroir) return;
@@ -877,7 +909,89 @@ function allegerBarre() {
     if (premierSel) entete.insertBefore(nav, premierSel);
     else entete.appendChild(nav);
   }
+  construireChoisir(tiroir);
   majBoutonsSelection();
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   LE TIROIR : CHOISIR, RETROUVER, ET LE RESTE
+
+   Il portait 31 commandes, dont 15 posaient la meme question plusieurs fois :
+   cinq pour le statut de tri, trois pour l'emotion, trois pour qui est sur
+   l'image. Et il interrogeait l'ANCIENNE analyse — intensite, ambiance,
+   mouvement — alors que les notes de cible, de verdict et de risque n'y
+   etaient pas du tout.
+
+   On pose donc « Choisir » en haut, avec ce qu'on demande vraiment. Le reste
+   descend derriere « Anciens filtres », replie. Rien n'est supprime.
+   ════════════════════════════════════════════════════════════════════════ */
+function construireChoisir(tiroir) {
+  if (!tiroir || tiroir.querySelector('.choisir')) return;
+
+  const sec = document.createElement('section');
+  sec.className = 'drawer-section choisir';
+  sec.innerHTML = `<h4>Choisir</h4>
+    <div class="drawer-field"><label for="fc-cible">Pour quelle cible</label>
+      <select id="fc-cible">
+        <option value="">Toutes</option>
+        <option value="seance">Les séances</option>
+        <option value="formation">La formation</option>
+        <option value="les_deux">Les deux</option>
+        <option value="aucune">Aucune</option>
+      </select></div>
+    <div class="drawer-field"><label for="fc-verdict">Verdict</label>
+      <select id="fc-verdict">
+        <option value="">Tous</option>
+        <option value="tel_quel">Utilisables tels quels</option>
+        <option value="a_recadrer">À recadrer</option>
+        <option value="a_retoucher">À retoucher</option>
+        <option value="a_ecarter">À écarter</option>
+      </select></div>
+    <div class="drawer-field"><label for="fc-risque">Risque de blocage</label>
+      <select id="fc-risque">
+        <option value="">Peu importe</option>
+        <option value="faible">Faible — publiable sans réfléchir</option>
+        <option value="eleve">Élevé — à regarder avant de publier</option>
+      </select></div>
+    <div class="drawer-field"><label for="fc-publie">Publication</label>
+      <select id="fc-publie">
+        <option value="">Peu importe</option>
+        <option value="jamais">Jamais publié</option>
+        <option value="deja">Déjà publié</option>
+      </select></div>`;
+  tiroir.insertBefore(sec, tiroir.firstChild);
+
+  const brancher = (id, cle) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = state.filters[cle] || '';
+    el.addEventListener('change', e => { state.filters[cle] = e.target.value; resetAndReload(); });
+  };
+  brancher('fc-cible', 'cible');
+  brancher('fc-verdict', 'verdict');
+  brancher('fc-risque', 'risque');
+  brancher('fc-publie', 'publie');
+
+  // Ce qui reste descend derriere un repli. Les sections gardent leurs
+  // identifiants et leurs gestionnaires : on ne fait que les deplacer.
+  const anciennes = [...tiroir.querySelectorAll('.drawer-section')]
+    .filter(x => !x.classList.contains('choisir') && !x.dataset.garde);
+  if (!anciennes.length) return;
+  const boite = document.createElement('div');
+  boite.className = 'drawer-anciens';
+  const bouton = document.createElement('button');
+  bouton.type = 'button'; bouton.className = 'drawer-anciens-btn';
+  const corps = document.createElement('div');
+  corps.className = 'drawer-anciens-corps'; corps.hidden = true;
+  const combien = anciennes.reduce((n, x) => n + x.querySelectorAll('select, input, button').length, 0);
+  const majTexte = () => {
+    bouton.innerHTML = (corps.hidden ? '▸' : '▾') + ' Anciens filtres <em>' + combien + '</em>';
+  };
+  bouton.addEventListener('click', () => { corps.hidden = !corps.hidden; majTexte(); });
+  majTexte();
+  anciennes.forEach(x => corps.appendChild(x));
+  boite.appendChild(bouton); boite.appendChild(corps);
+  tiroir.appendChild(boite);
 }
 
 // Les trois boutons de sélection ne servent QUE s'il y a une sélection. Affichés
@@ -1016,6 +1130,10 @@ function buildQuery() {
 
   if (f.qualityMin > 0) q = q.gte('quality_score', f.qualityMin);
 
+  // quality_score porte desormais la note d'accroche : le filtre existait deja,
+  // il a juste change de sens. Les quatre suivants sont nouveaux.
+  q = appliquerNotes(q, f, 'analysis_raw');
+
   if (f.usableReel) q = q.eq('usable_for_reel', true);
 
   // "Afficher les refusés" prime : on ne montre que les refusés.
@@ -1068,6 +1186,13 @@ function buildQuery() {
       `file_name.ilike.%${s}%`,
       `ambiance.ilike.%${s}%`,
       `location_name.ilike.%${s}%`,
+      // L'accroche et le descriptif reseaux vivent dans analysis_raw, pas dans une
+      // colonne. On peut les interroger par leur chemin : mesure a ~100 ms, autant
+      // que les colonnes ordinaires. Sans ca, tout ce que l'analyse a ecrit cette
+      // nuit reste introuvable a la recherche.
+      `analysis_raw->>accroche.ilike.%${s}%`,
+      `analysis_raw->>description_reseaux.ilike.%${s}%`,
+      `analysis_raw->>ce_qui_se_passe.ilike.%${s}%`,
     ].join(','));
   }
 

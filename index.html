@@ -1485,6 +1485,19 @@ body[data-media="image"] .photo-only { display: none; }
   transition: background 0.15s;
 }
 .montee-actions a:hover { background: rgba(235,211,160,0.18); }
+/* ═══ Le tiroir : Choisir en haut, le reste replié ═══ */
+.drawer-section.choisir h4 { color: #ebd3a0; }
+.drawer-anciens { margin-top: 1rem; border-top: 1px solid #1d3a47; padding-top: .8rem; }
+.drawer-anciens-btn {
+  width: 100%; text-align: left; background: #102832; border: 1px solid #1d3a47;
+  border-radius: 9px; padding: .55rem .7rem; color: #98a8b0; cursor: pointer;
+  font-family: inherit; font-size: .82rem;
+}
+.drawer-anciens-btn:hover { color: #f5eee1; border-color: #a78448; }
+.drawer-anciens-btn em { font-style: normal; color: #6c7d85; font-size: .74rem; }
+.drawer-anciens-corps { padding-top: .7rem; }
+.drawer-anciens-corps[hidden] { display: none; }
+
 /* ═══ Étiquettes repliées dans le mode tri ═══
    Elles pesaient 564 px sur une carte de 1000, plus que l'image elle-même, et
    répétaient les mêmes valeurs d'une carte à l'autre sur une même séance. */
