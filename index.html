@@ -1485,6 +1485,31 @@ body[data-media="image"] .photo-only { display: none; }
   transition: background 0.15s;
 }
 .montee-actions a:hover { background: rgba(235,211,160,0.18); }
+/* ═══ Barre du haut allégée ═══
+   Les onglets rares derrière « ⋯ », et les cinq banques séparées en deux groupes :
+   les séances d'un côté, les banques générées et les lives de l'autre. */
+.tabs-plus { position: relative; display: inline-block; }
+.tabs-plus-menu {
+  position: absolute; top: 100%; left: 0; z-index: 60; min-width: 170px;
+  display: flex; flex-direction: column; gap: 2px; padding: 5px;
+  background: #102832; border: 1px solid #1d3a47; border-radius: 9px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.5);
+}
+.tabs-plus-menu[hidden] { display: none; }
+.tabs-plus-menu .view-tab { width: 100%; text-align: left; }
+.media-switch .media-btn[data-media="image"] { margin-left: 14px; position: relative; }
+.media-switch .media-btn[data-media="image"]::before {
+  content: ""; position: absolute; left: -8px; top: 15%; bottom: 15%;
+  width: 1px; background: #1d3a47;
+}
+/* Le curseur de largeur rejoint la barre principale : il sert tous les jours. */
+.filters-main #zoom-control { margin-left: auto; }
+/* Ce que le tiroir a récupéré garde un titre, sinon on ne retrouve rien. */
+.drawer-section.range h4 { font-size: .72rem; text-transform: uppercase; letter-spacing: .07em;
+                           color: #98a8b0; margin: 0 0 .45rem; }
+.drawer-section.range #presets-row,
+.drawer-section.range #tri-bar { display: flex; flex-wrap: wrap; gap: .35rem; }
+
 /* Le point de risque sur la vignette : discret, mais on ne peut pas le rater. */
 .risque-point { position: absolute; top: .35rem; right: 2.6rem; width: 8px; height: 8px;
                 border-radius: 50%; background: #e88a8a;

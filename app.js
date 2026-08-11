@@ -797,6 +797,87 @@ function openImageModal(c) {
    les demande donc UNE SEULE fois, à l'ouverture d'une carte, et on garde le
    résultat en mémoire pour ne pas y revenir.
    ════════════════════════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════════════════════════
+   ALLÉGER LA BARRE DU HAUT
+
+   Elle portait 101 commandes avant la première image. On n'en SUPPRIME
+   aucune : on les DÉPLACE dans le tiroir « Filtres » qui existe déjà. Les
+   gestionnaires sont attachés aux éléments eux-mêmes, donc déplacer un nœud
+   ne casse rien — c'est pour ça qu'on procède comme ça plutôt qu'en
+   réécrivant le HTML.
+
+   Ce qui reste visible répond aux questions qu'on se pose vraiment :
+   dans quelle banque je suis, qu'est-ce qui est utilisable, et je cherche quoi.
+   ════════════════════════════════════════════════════════════════════════ */
+function allegerBarre() {
+  const tiroir = document.querySelector('.drawer-body');
+  if (!tiroir) return;
+
+  const ranger = (sel, titre) => {
+    const el = document.querySelector(sel);
+    if (!el || el.dataset.range) return;
+    const bloc = document.createElement('div');
+    bloc.className = 'drawer-section range';
+    bloc.innerHTML = `<h4>${titre}</h4>`;
+    el.dataset.range = '1';
+    bloc.appendChild(el);
+    tiroir.appendChild(bloc);
+  };
+
+  // Les huit pastilles d'ambiance viennent de l'ancienne analyse : l'émotion
+  // est notée de 0 à 10 maintenant, c'est plus fin. On les garde le temps de
+  // vérifier, mais elles n'ont plus à occuper une ligne entière.
+  ranger('#presets-row', 'Préréglages rapides');
+  ranger('#tri-bar', 'Affichage du tri');
+
+  // Le curseur de largeur, lui, sert tous les jours : il rejoint la barre
+  // principale au lieu de manger sa propre ligne.
+  const zoom = document.getElementById('zoom-control');
+  const principale = document.querySelector('.filters-main');
+  if (zoom && principale && !zoom.dataset.deplace) {
+    zoom.dataset.deplace = '1';
+    zoom.style.marginLeft = '0';
+    principale.appendChild(zoom);
+  }
+  const restes = document.querySelector('.reglages-galerie');
+  if (restes && !restes.querySelector('button, input, select')) restes.style.display = 'none';
+
+  // Les onglets rares passent derrière « ⋯ » : Visages, Analyse IA, Doublons et
+  // Maintenance ne servent pas au tri quotidien et encombraient le chemin principal.
+  const nav = document.getElementById('view-tabs');
+  if (nav && !nav.dataset.replie) {
+    nav.dataset.replie = '1';
+    const rares = [...nav.querySelectorAll('.view-tab')]
+      .filter(b => !['gallery', 'montees'].includes(b.dataset.view));
+    if (rares.length) {
+      const boite = document.createElement('div');
+      boite.className = 'tabs-plus';
+      const bouton = document.createElement('button');
+      bouton.type = 'button'; bouton.className = 'view-tab tabs-plus-btn'; bouton.textContent = '⋯ Plus';
+      const menu = document.createElement('div');
+      menu.className = 'tabs-plus-menu'; menu.hidden = true;
+      rares.forEach(b => menu.appendChild(b));
+      bouton.addEventListener('click', e => { e.stopPropagation(); menu.hidden = !menu.hidden; });
+      menu.addEventListener('click', () => { menu.hidden = true; });
+      document.addEventListener('click', () => { menu.hidden = true; });
+      boite.appendChild(bouton); boite.appendChild(menu); nav.appendChild(boite);
+    }
+  }
+
+  majBoutonsSelection();
+}
+
+// Les trois boutons de sélection ne servent QUE s'il y a une sélection. Affichés
+// en permanence, ils prenaient une ligne pour ne rien proposer la plupart du temps.
+function majBoutonsSelection() {
+  const n = (state.selection && state.selection.size) || 0;
+  const signalee = document.body.classList.contains('sel-view-on');
+  ['sel-flag', 'sel-view', 'sel-clear'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.style.display = (n > 0 || signalee || id === 'sel-view') ? '' : 'none';
+  });
+}
+
 const NOTES_CACHE = new Map();
 const COL_BRUT = { photo: 'gemini_raw', video: 'analysis_raw' };
 
@@ -2509,6 +2590,7 @@ function handleSelectClick(id, shift) {
 }
 
 function updateSelectionBar() {
+  majBoutonsSelection();          // les 3 boutons du haut suivent la sélection
   const n = state.selection.size;
   if (n === 0) { selectionBar.classList.remove('active'); return; }
   selectionBar.classList.add('active');
@@ -3463,6 +3545,7 @@ if (usageFilter) {
 }
 
 // ---------- INIT ----------
+allegerBarre();                   // 101 commandes visibles -> l'essentiel, le reste au tiroir
 checkSession().then(() => initPickerModeUI());
 // Au cas où la session existe déjà (onAuthStateChange), on s'assure que la bannière s'affiche
 setTimeout(() => initPickerModeUI(), 300);
