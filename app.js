@@ -870,7 +870,12 @@ function allegerBarre() {
   const entete = document.querySelector('header');
   if (nav && entete && !nav.dataset.remonte) {
     nav.dataset.remonte = '1';
-    entete.appendChild(nav);
+    // AVANT les boutons de sélection, pas après : « Ma sélection » porte un
+    // margin-left:auto qui la colle à droite, et tout ce qui la suit se retrouve
+    // repoussé à la ligne suivante. C'est ce qui gardait une rangée de trop.
+    const premierSel = entete.querySelector('.sel-toggle');
+    if (premierSel) entete.insertBefore(nav, premierSel);
+    else entete.appendChild(nav);
   }
   majBoutonsSelection();
 }
@@ -2010,17 +2015,47 @@ function makeTriPanel(c, card) {
   p.appendChild(rowR);
   p.appendChild(triDivider());
 
-  // Contexte : 2 lignes (Formation/Séance/Individuel, puis Nath/Nath/Duo)
-  p.appendChild(renderTriTagWrap(c, card, TRI_CTX1));
-  p.appendChild(renderTriTagWrap(c, card, TRI_CTX2));
-  p.appendChild(triDivider());
+  /* Les étiquettes sont REPLIÉES par défaut.
 
-  // Montage & son
-  p.appendChild(renderTriTagWrap(c, card, TRI_CASES, 'g2'));
-  p.appendChild(triDivider());
+     Elles occupaient 564 px sur une carte de 1000 — plus que l'image, qui est
+     pourtant ce sur quoi on décide. Et sur une même séance elles sont identiques
+     d'une carte à l'autre : Formation, Individuel, Duo, Innerdance… on les lisait
+     vingt fois pour rien.
 
-  // Pratique
-  p.appendChild(renderTriTagWrap(c, card, TRI_PRACTICES, 'g3'));
+     Rien n'est retiré : une ligne de résumé dit ce qui est posé, un clic ouvre.
+     Et comme la participante et le commentaire s'appliquent déjà à toute la
+     sélection, poser les étiquettes une fois pour vingt reste possible. */
+  const etiq = document.createElement('div');
+  etiq.className = 'tri-etiquettes';
+  const resume = document.createElement('button');
+  resume.type = 'button';
+  resume.className = 'tri-etiq-resume';
+  const corps = document.createElement('div');
+  corps.className = 'tri-etiq-corps';
+  corps.hidden = true;
+
+  corps.appendChild(renderTriTagWrap(c, card, TRI_CTX1));
+  corps.appendChild(renderTriTagWrap(c, card, TRI_CTX2));
+  corps.appendChild(triDivider());
+  corps.appendChild(renderTriTagWrap(c, card, TRI_CASES, 'g2'));
+  corps.appendChild(triDivider());
+  corps.appendChild(renderTriTagWrap(c, card, TRI_PRACTICES, 'g3'));
+
+  const majResume = () => {
+    const on = [...corps.querySelectorAll('.tri-chip.on')].map(b => b.textContent.trim());
+    resume.innerHTML = corps.hidden
+      ? `<span class="fleche">▸</span>` + (on.length
+          ? `<span class="posees">${on.map(t => `<i>${escapeHtml(t)}</i>`).join('')}</span>`
+          : `<span class="vide">aucune étiquette</span>`)
+      : `<span class="fleche ouverte">▾</span><span class="vide">étiquettes</span>`;
+  };
+  corps.addEventListener('click', () => setTimeout(majResume, 0));
+  resume.addEventListener('click', () => { corps.hidden = !corps.hidden; majResume(); });
+  majResume();
+
+  etiq.appendChild(resume);
+  etiq.appendChild(corps);
+  p.appendChild(etiq);
   p.appendChild(triDivider());
 
   // Commentaire + bouton Bug (à côté)

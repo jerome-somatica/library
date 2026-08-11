@@ -1485,6 +1485,26 @@ body[data-media="image"] .photo-only { display: none; }
   transition: background 0.15s;
 }
 .montee-actions a:hover { background: rgba(235,211,160,0.18); }
+/* ═══ Étiquettes repliées dans le mode tri ═══
+   Elles pesaient 564 px sur une carte de 1000, plus que l'image elle-même, et
+   répétaient les mêmes valeurs d'une carte à l'autre sur une même séance. */
+.tri-etiquettes { display: block; }
+.tri-etiq-resume {
+  display: flex; align-items: center; gap: .35rem; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; padding: .25rem 0;
+  font-family: inherit; font-size: .74rem; color: #98a8b0; min-height: 26px;
+}
+.tri-etiq-resume:hover { color: #f5eee1; }
+.tri-etiq-resume .fleche { color: #6c7d85; font-size: .7rem; flex: none; }
+.tri-etiq-resume .vide { color: #6c7d85; font-style: italic; }
+.tri-etiq-resume .posees { display: flex; gap: .25rem; flex-wrap: wrap; }
+.tri-etiq-resume .posees i {
+  font-style: normal; font-size: .68rem; padding: .05rem .35rem; border-radius: 4px;
+  background: rgba(235,211,160,.12); color: #ebd3a0;
+}
+.tri-etiq-corps { display: block; padding-top: .3rem; }
+.tri-etiq-corps[hidden] { display: none; }
+
 /* ═══ Deux rangées, pas quatre ═══
    Le titre, les cinq banques et les onglets tiennent sur la même ligne : ce sont
    trois façons de se déplacer, pas trois métiers. « Ma sélection » file à droite.
