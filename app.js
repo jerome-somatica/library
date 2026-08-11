@@ -864,6 +864,14 @@ function allegerBarre() {
     }
   }
 
+  // Deux rangées ne portaient qu'un ou deux boutons : « Ma sélection » seule sur
+  // la sienne, et les trois onglets sur la leur. Elles rejoignent la ligne des
+  // banques — c'est la même chose, se déplacer dans l'application.
+  const entete = document.querySelector('header');
+  if (nav && entete && !nav.dataset.remonte) {
+    nav.dataset.remonte = '1';
+    entete.appendChild(nav);
+  }
   majBoutonsSelection();
 }
 

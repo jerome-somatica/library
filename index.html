@@ -1485,6 +1485,21 @@ body[data-media="image"] .photo-only { display: none; }
   transition: background 0.15s;
 }
 .montee-actions a:hover { background: rgba(235,211,160,0.18); }
+/* ═══ Deux rangées, pas quatre ═══
+   Le titre, les cinq banques et les onglets tiennent sur la même ligne : ce sont
+   trois façons de se déplacer, pas trois métiers. « Ma sélection » file à droite.
+   La ligne de travail — chercher, trier, filtrer — reste seule en dessous. */
+header { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+header .title { margin-right: .3rem; }
+header #view-tabs { display: flex; gap: .2rem; margin: 0; padding: 0 0 0 .7rem;
+                    border: none; border-left: 1px solid #1d3a47; }
+header #sel-view { margin-left: auto; }
+header #sel-flag, header #sel-clear { margin-left: 0; }
+@media (max-width: 720px) {
+  header #view-tabs { border-left: none; padding-left: 0; width: 100%; }
+  header #sel-view { margin-left: 0; }
+}
+
 /* ═══ Barre du haut allégée ═══
    Les onglets rares derrière « ⋯ », et les cinq banques séparées en deux groupes :
    les séances d'un côté, les banques générées et les lives de l'autre. */
