@@ -1559,6 +1559,26 @@ header #sel-flag, header #sel-clear { margin-left: 0; }
 .drawer-section.range #tri-bar { display: flex; flex-wrap: wrap; gap: .35rem; }
 
 /* Le point de risque sur la vignette : discret, mais on ne peut pas le rater. */
+/* Pastille de verdict, en bas a droite de la vignette : le seul coin encore libre.
+   Vert = utilisable tel quel · dore = a recadrer · orange = a retoucher · rouge = a
+   ecarter. Une image non analysee n'a pas de pastille du tout : on ne fait pas
+   semblant de savoir. */
+.verdict-pastille {
+  position: absolute; bottom: 6px; right: 6px;
+  width: 10px; height: 10px; border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(10,24,31,0.75);
+  pointer-events: none;
+}
+.verdict-pastille.v-ok        { background: #87d6ad; }
+.verdict-pastille.v-recadrer  { background: #ebd3a0; }
+.verdict-pastille.v-retoucher { background: #e8c084; }
+.verdict-pastille.v-ecarter   { background: #e88a8a; }
+
+/* Les huit menus deroulants vivent maintenant dans le tiroir. Ils ne concernent
+   que les photos et les banques generees : sur l'onglet video la section entiere
+   disparait, au lieu d'afficher un titre au-dessus du vide. */
+body:not(.media-non-video) .drawer-section.range-photos { display: none; }
+
 .risque-point { position: absolute; top: .35rem; right: 2.6rem; width: 8px; height: 8px;
                 border-radius: 50%; background: #e88a8a;
                 box-shadow: 0 0 0 2px rgba(0,0,0,.5); z-index: 3; }
@@ -2309,7 +2329,7 @@ header #sel-flag, header #sel-clear { margin-left: 0; }
 <!-- Le ?v= est la clé de cache du navigateur. Fige au 13 juillet, il servait
      l'ancien app.js meme quand Netlify en deployait un neuf : trois deploiements
      de suite n'ont rien change a l'ecran. A BUMPER A CHAQUE FOIS. -->
-<script src="app.js?v=20260811b"></script>
+<script src="app.js?v=20260814a"></script>
 <script src="admin.js?v=20260811b"></script>
 </body>
 </html>

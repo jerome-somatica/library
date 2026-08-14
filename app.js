@@ -40,6 +40,10 @@ const LIGHT_COLS = [
   'music_present', 'has_speech', 'emotional_intensity', 'emotional_states',
   'usable_for_reel', 'location_name',
   'tri_status', 'tri_rating', 'tri_note', 'tri_tags', 'tri_participante', 'codec', 'content_hash', 'flagged',
+  // Le verdict seul, extrait du JSON par la base : une chaine de dix caracteres au
+  // lieu du bloc d'analyse entier. C'est ce qui permet la pastille de couleur sur
+  // la vignette sans alourdir le chargement de la galerie.
+  'verdict:analysis_raw->>verdict',
 ].join(',');
 
 // Le navigateur sait-il décoder le HEVC/H.265 ? (Safari oui, Chrome souvent non)
@@ -520,9 +524,11 @@ document.addEventListener('click', (e) => {
 // ---------- DATA FETCH ----------
 // ===================== FLUX PHOTO / IMAGES IA =====================
 function imageCols() {
+  // « verdict:… » demande a la base d'extraire ce seul champ du bloc d'analyse.
+  // Sans lui, la vignette ne peut rien dire de l'image sans qu'on l'ouvre.
   return state.mediaType === 'photo'
-    ? 'id,r2_url,r2_key,filename,subject,category,ambiance,tags,quality_score,status,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante,tri_salle,flagged'
-    : 'id,r2_url,r2_key,prompt,model,source,tags,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante,flagged';
+    ? 'id,r2_url,r2_key,filename,subject,category,ambiance,tags,quality_score,status,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante,tri_salle,flagged,verdict:gemini_raw->>verdict'
+    : 'id,r2_url,r2_key,prompt,model,source,tags,created_at,tri_status,tri_rating,tri_note,tri_tags,tri_participante,flagged,verdict:analysis_raw->>verdict';
 }
 function buildImageQuery() {
   let q = sb.from(mediaTable()).select(imageCols(), { count: 'exact' });
@@ -606,6 +612,8 @@ function makeImageCard(c) {
   cb.textContent = state.selection.has(c.id) ? '✓' : '';
   cb.addEventListener('click', e => { e.stopPropagation(); handleSelectClick(c.id, e.shiftKey); });
   thumb.appendChild(cb);
+  const pv = pastilleVerdict(c);
+  if (pv) thumb.appendChild(pv);
   const tagOv = document.createElement('div');
   tagOv.className = 'card-tags';
   thumb.appendChild(tagOv);
@@ -845,11 +853,11 @@ function allegerBarre() {
   const tiroir = document.querySelector('.drawer-body');
   if (!tiroir) return;
 
-  const ranger = (sel, titre) => {
+  const ranger = (sel, titre, classe) => {
     const el = document.querySelector(sel);
     if (!el || el.dataset.range) return;
     const bloc = document.createElement('div');
-    bloc.className = 'drawer-section range';
+    bloc.className = 'drawer-section range' + (classe ? ' ' + classe : '');
     bloc.innerHTML = `<h4>${titre}</h4>`;
     el.dataset.range = '1';
     bloc.appendChild(el);
@@ -861,6 +869,11 @@ function allegerBarre() {
   // vérifier, mais elles n'ont plus à occuper une ligne entière.
   ranger('#presets-row', 'Préréglages rapides');
   ranger('#tri-bar', 'Affichage du tri');
+  // Les huit menus deroulants — statut, etiquetage, note, facilitateur, contexte,
+  // pratique, salle, participante — mangeaient une ligne entiere de l'ecran, et
+  // c'est exactement ce que Jerome trouvait inutilisable. Ils descendent dans le
+  // tiroir. La section se cache d'elle-meme sur l'onglet video (voir le style).
+  ranger('#photo-filters-row', 'Filtres détaillés', 'range-photos');
 
   // Le curseur de largeur, lui, sert tous les jours : il rejoint la barre
   // principale au lieu de manger sa propre ligne.
@@ -1037,6 +1050,26 @@ function majBoutonsSelection() {
 
 const NOTES_CACHE = new Map();
 const COL_BRUT = { photo: 'gemini_raw', video: 'analysis_raw' };
+
+/* La pastille de verdict.
+   Jusqu'ici une vignette ne disait que deux choses : une note sur dix et une duree.
+   Pour savoir si une image etait utilisable il fallait l'ouvrir, une par une, sur
+   603 photos. La pastille repond a la seule question qui compte au premier coup
+   d'oeil : est-ce que je peux m'en servir ? */
+const VERDICTS_PASTILLE = {
+  tel_quel:    ['ok',        'Utilisable tel quel'],
+  a_recadrer:  ['recadrer',  'À recadrer'],
+  a_retoucher: ['retoucher', 'À retoucher'],
+  a_ecarter:   ['ecarter',   'À écarter'],
+};
+function pastilleVerdict(c) {
+  const v = VERDICTS_PASTILLE[c && c.verdict];
+  if (!v) return null;                       // pas encore analysee : on n'invente rien
+  const d = document.createElement('div');
+  d.className = 'verdict-pastille v-' + v[0];
+  d.title = v[1];
+  return d;
+}
 
 function nParM(n, max) {           // largeur de la jauge, sur 10
   return Math.max(0, Math.min(100, (Number(n) || 0) / (max || 10) * 100));
@@ -1640,6 +1673,9 @@ function makeCard(c) {
     rb.title = 'Risque de restriction élevé — ouvre la fiche pour la raison';
     thumb.appendChild(rb);
   }
+
+  const pvc = pastilleVerdict(c);
+  if (pvc) thumb.appendChild(pvc);
 
   // usable for reel pastille
   if (c.usable_for_reel) {
@@ -3114,6 +3150,12 @@ function openModal(id) {
     btn.addEventListener('click', a.onClick);
     modalActions.appendChild(btn);
   }
+
+  // Il y a DEUX fonctions qui ouvrent une fiche : openImageModal() pour les photos
+  // et celle-ci pour les videos. Les notes n'etaient branchees que sur la premiere,
+  // si bien que les 1231 clips utilisables n'affichaient rien de l'analyse : ni
+  // verdict, ni cible, ni accroche. On les branche ici aussi.
+  chargerNotes(c);
 
   modalBg.classList.add('active');
 }
