@@ -39,7 +39,7 @@ const LIGHT_COLS = [
   'quality_score', 'persons_count', 'persons_detected',
   'music_present', 'has_speech', 'emotional_intensity', 'emotional_states',
   'usable_for_reel', 'location_name',
-  'tri_status', 'tri_rating', 'tri_note', 'tri_tags', 'tri_participante', 'codec', 'content_hash', 'flagged',
+  'tri_status', 'tri_rating', 'tri_note', 'tri_tags', 'tri_participante', 'tri_salle', 'codec', 'content_hash', 'flagged',
   // Le verdict seul, extrait du JSON par la base : une chaine de dix caracteres au
   // lieu du bloc d'analyse entier. C'est ce qui permet la pastille de couleur sur
   // la vignette sans alourdir le chargement de la galerie.
@@ -1189,6 +1189,8 @@ function buildQuery() {
   if (f.movement) q = q.eq('movement', f.movement);
   if (f.lighting) q = q.eq('lighting', f.lighting);
   if (f.location) q = q.eq('location_name', f.location);
+  if (f.triSalle === '__none__') q = q.is('tri_salle', null);
+  else if (f.triSalle) q = q.ilike('tri_salle', `%${f.triSalle}%`);
   if (f.intensity) q = q.eq('emotional_intensity', f.intensity);
 
   if (f.qualityMin > 0) q = q.gte('quality_score', f.qualityMin);
@@ -2681,7 +2683,10 @@ const CLES_VIDEO_SEULEMENT = new Set([
   'persons', 'personsNames', 'music', 'speech', 'qualityMin', 'analysis',
   'usableReel', 'usage', 'status',
 ]);
-const CLES_PHOTO_SEULEMENT = new Set(['triSalle', 'triFacilitateur', 'triTagged']);
+// triSalle en est sorti le 24/08/2026 : video_library a desormais sa colonne
+// tri_salle, donc « Sans salle » sert des deux cotes — c'est le geste pour
+// retrouver ce qui reste a renseigner.
+const CLES_PHOTO_SEULEMENT = new Set(['triFacilitateur', 'triTagged']);
 
 function sAppliqueIci(key) {
   return isVideoMode() ? !CLES_PHOTO_SEULEMENT.has(key) : !CLES_VIDEO_SEULEMENT.has(key);
@@ -2811,12 +2816,20 @@ function toggleSelection(id) {
 function handleSelectClick(id, shift) {
   const idx = state.clips.findIndex(x => x.id === id);
   if (shift && lastSelIndex != null && idx >= 0) {
+    // La plage prend l'ETAT INVERSE de la carte cliquee. Avant, ⇧clic ne savait
+    // qu'AJOUTER : une serie choisie par erreur ne se defaisait qu'en decochant
+    // les vignettes une par une — sur une plage de quarante, c'est intenable.
+    // Maintenant ⇧clic sur une carte deja cochee decoche toute la plage.
+    const enlever = state.selection.has(id);
     const a = Math.min(lastSelIndex, idx), b = Math.max(lastSelIndex, idx);
     for (let i = a; i <= b; i++) {
       const cid = state.clips[i] && state.clips[i].id;
-      if (cid) { state.selection.add(cid); paintCardSelection(cid); }
+      if (!cid) continue;
+      if (enlever) state.selection.delete(cid); else state.selection.add(cid);
+      paintCardSelection(cid);
     }
     updateSelectionBar();
+    if (enlever) toast(`${b - a + 1} retiré(s) de la sélection`);
   } else {
     toggleSelection(id);
     lastSelIndex = idx;
@@ -2983,8 +2996,10 @@ function buildBatchTriBar() {
     pin.addEventListener('change', () => applyBatchParticipante(pin.value.trim()));
     host.appendChild(pin);
   }
-  // Salle commune (photos)
-  if (state.mediaType === 'photo') {
+  // Salle commune. Etait reservee aux photos — pas par choix, mais parce que
+  // video_library n'avait pas de colonne tri_salle. Elle existe depuis le
+  // 24/08/2026 : les clips de seance se remplissent donc pareil.
+  if (state.mediaType === 'photo' || state.mediaType === 'video') {
     const ssep = document.createElement('span');
     ssep.className = 'batch-sep'; ssep.textContent = 'salle';
     host.appendChild(ssep);
