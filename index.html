@@ -594,6 +594,15 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
    allumer le mode tri ailleurs dans l'ecran. Une selection est deja une intention
    suffisante — 24/08/2026. */
 .selection-bar.active .batch-tri { display: flex; }
+/* La salle et la participante se CHOISISSENT : un champ libre avait produit huit
+   écritures pour cinq lieux. Même gabarit que l'ancien champ, pour ne rien déplacer. */
+.batch-select {
+  background: rgba(10,24,31,.6); color: #ebd3a0;
+  border: 1px solid rgba(235,211,160,.3); border-radius: 6px;
+  padding: 4px 8px; font-size: 11.5px; max-width: 220px;
+}
+.batch-select:hover { border-color: rgba(235,211,160,.55); }
+
 .batch-tri .batch-sep { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(235,211,160,0.5); margin: 0 2px; }
 .batch-btn { padding: 4px 9px; border-radius: 6px; border: 1px solid rgba(235,211,160,0.3); background: transparent; color: #ebd3a0; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .batch-btn:hover { background: rgba(235,211,160,0.1); }
@@ -2334,7 +2343,7 @@ body:not(.media-non-video) .drawer-section.range-photos { display: none; }
 <!-- Le ?v= est la clé de cache du navigateur. Fige au 13 juillet, il servait
      l'ancien app.js meme quand Netlify en deployait un neuf : trois deploiements
      de suite n'ont rien change a l'ecran. A BUMPER A CHAQUE FOIS. -->
-<script src="app.js?v=20260824a"></script>
+<script src="app.js?v=20260824c"></script>
 <script src="admin.js?v=20260811b"></script>
 </body>
 </html>

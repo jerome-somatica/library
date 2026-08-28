@@ -1773,6 +1773,13 @@ const TRI_CASES = [
   ['deja_monte', 'Déjà monté'],
   ['texte_incruste', 'Texte incrusté'],
   ['son_origine', "Son d'origine ++"],
+  // Ce qui n'a PAS de participante nommee, parce que ce n'est pas quelqu'un.
+  // Ces trois-la vivaient dans le champ « participante » — « salle » y etait meme
+  // la valeur la plus frequente, 182 photos. Un nom de personne servait a dire
+  // « ici il n'y a personne ». Ce sont des etiquettes depuis le 24/08/2026.
+  ['visite_salle', 'Visite de salle'],
+  ['objets', 'Objets'],
+  ['groupe', 'Groupe'],
 ];
 
 // Pratiques de transe (Innerdance couvre aussi la Kundalini Activation)
@@ -2993,11 +3000,35 @@ function buildBatchTriBar() {
     const psep = document.createElement('span');
     psep.className = 'batch-sep'; psep.textContent = 'participante';
     host.appendChild(psep);
-    const pin = document.createElement('input');
-    pin.className = 'batch-part';
-    pin.type = 'text'; pin.placeholder = 'nom pour la sélection…';
-    pin.setAttribute('list', 'participantes-list');
-    pin.addEventListener('change', () => applyBatchParticipante(pin.value.trim()));
+    // Meme raison que pour la salle : la saisie libre a donne « caroline » et
+    // « Angela », « virginie terrier » et « Marie-Astride », « veronique  R » avec
+    // deux espaces. Chaque variante est une personne de plus dans les filtres.
+    const pin = document.createElement('select');
+    pin.className = 'batch-part batch-select';
+    const noms = [...new Set([...(state.catalog.participantes || [])]
+      .map(x => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'fr'));
+    pin.innerHTML = '<option value="">nom pour la sélection…</option>'
+      + noms.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('')
+      + '<option value="__vider__">— retirer le nom —</option>'
+      + '<option value="__new__">+ nouvelle participante…</option>';
+    pin.addEventListener('change', async () => {
+      const v = pin.value;
+      if (!v) return;
+      if (v === '__new__') {
+        const nom = (prompt('Nouvelle participante — écris-la une fois, proprement :')
+                     || '').replace(/\s+/g, ' ').trim();
+        pin.value = '';
+        if (!nom) return;
+        const jumelle = noms.find(x => x.toLowerCase() === nom.toLowerCase());
+        if (jumelle) { toast(`« ${jumelle} » existe déjà — choisis-la dans la liste`, 'error'); return; }
+        await applyBatchParticipante(nom);
+        buildBatchTriBar();
+        return;
+      }
+      await applyBatchParticipante(v === '__vider__' ? '' : v);
+      pin.value = '';
+    });
     host.appendChild(pin);
   }
   // Salle commune. Etait reservee aux photos — pas par choix, mais parce que
@@ -3007,11 +3038,41 @@ function buildBatchTriBar() {
     const ssep = document.createElement('span');
     ssep.className = 'batch-sep'; ssep.textContent = 'salle';
     host.appendChild(ssep);
-    const sin = document.createElement('input');
-    sin.className = 'batch-part';
-    sin.type = 'text'; sin.placeholder = 'salle pour la sélection…';
-    sin.setAttribute('list', 'salles-list');
-    sin.addEventListener('change', () => applyBatchSalle(sin.value.trim()));
+    // UNE LISTE, PAS UN CHAMP LIBRE.
+    // Taper la salle a la main a produit huit ecritures pour cinq lieux :
+    // « Angers · enso » et « angers bressigny » et « bressigny », « la fleche »
+    // avec l'accent a l'envers a cote de « La Fleche · eva yoga ». Chaque variante
+    // devient un lieu de plus dans les filtres, et les photos se dispersent.
+    // On choisit desormais ; on ne saisit qu'une salle vraiment nouvelle.
+    const sin = document.createElement('select');
+    sin.className = 'batch-part batch-select';
+    const connues = [...new Set([
+      ...VOCAB_SALLES,
+      ...[...(state.catalog.salles || [])],
+    ].map(x => String(x).trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'fr'));
+    sin.innerHTML = '<option value="">salle pour la sélection…</option>'
+      + connues.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('')
+      + '<option value="__vider__">— retirer la salle —</option>'
+      + '<option value="__new__">+ nouvelle salle…</option>';
+    sin.addEventListener('change', async () => {
+      const v = sin.value;
+      if (!v) return;
+      if (v === '__new__') {
+        const nom = (prompt('Nouvelle salle — écris-la une fois, proprement :\n'
+          + '(elle rejoindra la liste partagée avec le dérusheur)') || '').trim();
+        sin.value = '';
+        if (!nom) return;
+        const jumelle = connues.find(x => x.toLowerCase() === nom.toLowerCase());
+        if (jumelle) { toast(`« ${jumelle} » existe déjà — choisis-la dans la liste`, 'error'); return; }
+        await ajouterAuVocabulaire('salle', nom);
+        await applyBatchSalle(nom);
+        buildBatchTriBar();
+        return;
+      }
+      await applyBatchSalle(v === '__vider__' ? '' : v);
+      sin.value = '';
+    });
     host.appendChild(sin);
   }
 }
