@@ -1840,6 +1840,14 @@ const TRI_CASES = [
   ['visite_salle', 'Visite de salle'],
   ['objets', 'Objets'],
   ['groupe', 'Groupe'],
+  // Ce qui DECLENCHE la transcription. Le brief du 28/08 demande de poser
+  // « a_transcrire » sur les clips ou la parole compte — la fonction existe et
+  // repond, mais aucun bouton ne permettait de poser l'etiquette : impossible de
+  // s'en servir. Les trois autres disent de quoi il s'agit, pour le classement.
+  ['a_transcrire', '🎙 À transcrire'],
+  ['temoignage_eleve', 'Témoignage élève'],
+  ['temoignage_seance', 'Témoignage séance'],
+  ['explication', 'Explication face caméra'],
 ];
 
 // Pratiques de transe (Innerdance couvre aussi la Kundalini Activation)
