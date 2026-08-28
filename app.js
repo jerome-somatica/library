@@ -1172,7 +1172,9 @@ function setMediaType(type) {
   updateSelectionBar();
   buildBatchTriBar();
   populateTriParticipanteSelect();
-  if (type === 'photo') loadPhotoCatalog();
+  // Photos ET videos : les deux portent une salle et une participante depuis que
+  // video_library a sa colonne tri_salle.
+  if (type === 'photo' || type === 'video') loadPhotoCatalog();
   syncFiltersToUI();
   reloadColsForMode();
   loadFirstPage();
@@ -1946,8 +1948,15 @@ async function loadPhotoCatalog(force) {
   if (_photoCatalogLoaded && !force) return;
   _photoCatalogLoaded = true;
   try {
-    const { data, error } = await sb.from('image_library').select('tri_salle,tri_participante').limit(3000);
-    if (error) { _photoCatalogLoaded = false; return; }
+    // On lit les DEUX banques. Avant, seule image_library etait interrogee : sur
+    // l'onglet Video la liste des salles restait vide, donc impossible d'en poser
+    // une en lot — c'est ce qui ne marchait pas le 24/08/2026.
+    const [im, vi] = await Promise.all([
+      sb.from('image_library').select('tri_salle,tri_participante').limit(3000),
+      sb.from('video_library').select('tri_salle,tri_participante').limit(3000),
+    ]);
+    if (im.error) { _photoCatalogLoaded = false; return; }
+    const data = [...(im.data || []), ...(vi.error ? [] : (vi.data || []))];
     const salles = new Set();
     if (!state.catalog.participantes) state.catalog.participantes = new Set();
     for (const r of data || []) {
@@ -1959,6 +1968,9 @@ async function loadPhotoCatalog(force) {
     populateSalleSelect();
     populateParticipantesDatalist();
     populateTriParticipanteSelect();
+    // Le catalogue arrive APRES la construction de la barre groupee : sans ce
+    // redessin, ses listes restaient celles d'avant — c'est-a-dire vides.
+    buildBatchTriBar();
   } catch (e) { _photoCatalogLoaded = false; }
 }
 
