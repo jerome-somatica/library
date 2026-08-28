@@ -1268,6 +1268,13 @@ function buildQuery() {
   if (f.triRatingMin > 0) q = q.gte('tri_rating', f.triRatingMin);
   if (f.triPratique && f.triPratique !== '__none__') q = q.contains('tri_tags', [f.triPratique]);
   if (f.triContexte && f.triContexte !== '__none__') q = q.contains('tri_tags', [f.triContexte]);
+  // Le ROLE de la piece. C'est ICI que ca compte pour les clips : buildQuery() sert les videos,
+  // buildImageQuery() sert les photos et les images generees. J'avais d'abord ajoute le filtre
+  // dans la mauvaise requete — d'ou les temoignages introuvables (19/08).
+  if (f.triRole === '__none__') q = q.not('tri_tags', 'ov', '{temoignage_eleve,cours,pov,demo,visite_salle}');
+  else if (f.triRole) q = q.contains('tri_tags', [f.triRole]);
+  if (f.triFacilitateur === '__none__') q = q.not('tri_tags', 'ov', '{facil_jerome,facil_nath,facil_duo}');
+  else if (f.triFacilitateur) q = q.contains('tri_tags', [f.triFacilitateur]);
   if (f.triParticipante === '__none__') q = q.is('tri_participante', null);
   else if (f.triParticipante) q = q.ilike('tri_participante', `%${f.triParticipante}%`);
 
