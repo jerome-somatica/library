@@ -108,6 +108,7 @@ const DEFAULT_FILTERS = {
   triRatingMin: 0,     // filtre drawer : note minimale
   triPratique: '',     // filtre : tag pratique
   triContexte: '',     // filtre drawer : tag contexte / cas
+  triRole: '',         // filtre : role de la piece (temoignage_eleve, cours, pov, demo, visite_salle)
   triParticipante: '', // filtre : participante
   triFacilitateur: '', // filtre photo : facilitateur (facil_*)
   triSalle: '',        // filtre photo : salle / lieu
@@ -541,11 +542,16 @@ function buildImageQuery() {
   else if (f.triParticipante) q = q.ilike('tri_participante', `%${f.triParticipante}%`);
   if (f.triPratique === '__none__') q = q.not('tri_tags', 'ov', '{innerdance,breathwork,qi_cleansing,cacao}');
   else if (f.triPratique) q = q.contains('tri_tags', [f.triPratique]);
+  // Ces trois filtres etaient enfermes dans un bloc « photo » : sur les videos ils ne
+  // s'appliquaient pas du tout, et les 18 clips « temoignage_eleve » etaient introuvables.
+  // Seule la SALLE reste reservee aux photos : video_library n'a pas de `tri_salle`.
+  if (f.triFacilitateur === '__none__') q = q.not('tri_tags', 'ov', '{facil_jerome,facil_nath,facil_duo}');
+  else if (f.triFacilitateur) q = q.contains('tri_tags', [f.triFacilitateur]);
+  if (f.triContexte === '__none__') q = q.not('tri_tags', 'ov', '{formation,seance,individuel}');
+  else if (f.triContexte) q = q.contains('tri_tags', [f.triContexte]);
+  if (f.triRole === '__none__') q = q.not('tri_tags', 'ov', '{temoignage_eleve,cours,pov,demo,visite_salle}');
+  else if (f.triRole) q = q.contains('tri_tags', [f.triRole]);
   if (state.mediaType === 'photo') {
-    if (f.triFacilitateur === '__none__') q = q.not('tri_tags', 'ov', '{facil_jerome,facil_nath,facil_duo}');
-    else if (f.triFacilitateur) q = q.contains('tri_tags', [f.triFacilitateur]);
-    if (f.triContexte === '__none__') q = q.not('tri_tags', 'ov', '{formation,seance,individuel}');
-    else if (f.triContexte) q = q.contains('tri_tags', [f.triContexte]);
     if (f.triSalle === '__none__') q = q.is('tri_salle', null);
     else if (f.triSalle) q = q.ilike('tri_salle', `%${f.triSalle}%`);
     // Sans étiquette : aucun tag, pas de participante, pas de salle (tri_tags normalisé en '{}')
@@ -2048,6 +2054,9 @@ function recomputeUsable(c) {
 const FACIL_VALUES = ['facil_jerome', 'facil_nath', 'facil_duo'];
 const PRATIQUE_VALUES = ['innerdance', 'breathwork', 'qi_cleansing', 'cacao'];
 const CTX_VALUES = ['formation', 'seance', 'individuel'];
+// Le ROLE de la piece — ce qu'elle montre, pas ou ni avec qui. « temoignage_eleve » etait
+// pose sur 18 clips depuis le derushage sans qu'aucun filtre ne permette de les ressortir.
+const ROLE_VALUES = ['temoignage_eleve', 'cours', 'pov', 'demo', 'visite_salle'];
 const TAG_SHORT = { facil_jerome: 'Jérôme', facil_nath: 'Nath', facil_duo: 'Les deux', formation: 'Formation', seance: 'Séance', individuel: 'Individuel', innerdance: 'Inner', breathwork: 'Breath', qi_cleansing: 'Qi', cacao: 'Cacao' };
 const TAG_CLASS = { facil_jerome: 'ct-facil', facil_nath: 'ct-facil', facil_duo: 'ct-facil', formation: 'ct-ctx', seance: 'ct-ctx', individuel: 'ct-ctx', innerdance: 'ct-prat', breathwork: 'ct-prat', qi_cleansing: 'ct-prat', cacao: 'ct-prat' };
 function hasAnyTag(c, arr) { return Array.isArray(c.tri_tags) && c.tri_tags.some(t => arr.includes(t)); }
@@ -2062,11 +2071,13 @@ function photoMatchesFilters(c) {
   else if (f.triParticipante) { if (!String(c.tri_participante || '').toLowerCase().includes(f.triParticipante.toLowerCase())) return false; }
   if (f.triPratique === '__none__') { if (hasAnyTag(c, PRATIQUE_VALUES)) return false; }
   else if (f.triPratique) { if (!triHas(c, f.triPratique)) return false; }
+  if (f.triFacilitateur === '__none__') { if (hasAnyTag(c, FACIL_VALUES)) return false; }
+  else if (f.triFacilitateur) { if (!triHas(c, f.triFacilitateur)) return false; }
+  if (f.triContexte === '__none__') { if (hasAnyTag(c, CTX_VALUES)) return false; }
+  else if (f.triContexte) { if (!triHas(c, f.triContexte)) return false; }
+  if (f.triRole === '__none__') { if (hasAnyTag(c, ROLE_VALUES)) return false; }
+  else if (f.triRole) { if (!triHas(c, f.triRole)) return false; }
   if (state.mediaType === 'photo') {
-    if (f.triFacilitateur === '__none__') { if (hasAnyTag(c, FACIL_VALUES)) return false; }
-    else if (f.triFacilitateur) { if (!triHas(c, f.triFacilitateur)) return false; }
-    if (f.triContexte === '__none__') { if (hasAnyTag(c, CTX_VALUES)) return false; }
-    else if (f.triContexte) { if (!triHas(c, f.triContexte)) return false; }
     if (f.triSalle === '__none__') { if (c.tri_salle) return false; }
     else if (f.triSalle) { if (!String(c.tri_salle || '').toLowerCase().includes(f.triSalle.toLowerCase())) return false; }
     if (f.triTagged === 'untagged') { if (isPhotoTagged(c)) return false; }
@@ -2529,12 +2540,14 @@ wireTriSel('tri-status-filter', 'triStatus', false);
 wireTriSel('tri-rating-filter', 'triRatingMin', true);
 wireTriSel('tri-pratique-filter', 'triPratique', false);
 wireTriSel('tri-contexte-filter', 'triContexte', false);
+wireTriSel('tri-role-filter', 'triRole', false);
 wireTriSel('tri-participante-filter', 'triParticipante', false);
 // Filtres photos en haut (mêmes clés de state.filters)
 wireTriSel('pf-status', 'triStatus', false);
 wireTriSel('pf-rating', 'triRatingMin', true);
 wireTriSel('pf-facil', 'triFacilitateur', false);
 wireTriSel('pf-contexte', 'triContexte', false);
+wireTriSel('pf-role', 'triRole', false);
 wireTriSel('pf-pratique', 'triPratique', false);
 wireTriSel('pf-salle', 'triSalle', false);
 wireTriSel('pf-participante', 'triParticipante', false);
