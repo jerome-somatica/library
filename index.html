@@ -462,8 +462,11 @@ body.tri-on .card .thumb .duration,
 body.tri-on .card .thumb .usable-badge { display: none; }
 
 /* Overlay des tags sur la vignette (visible en mode tri) */
-.card-tags { display: none; }
-body.tri-on .card-tags {
+/* L'incrustation ne dependait que du mode tri : sur une planche de cent vignettes,
+   impossible de voir lesquelles avaient deja leur salle. Elle est la en permanence,
+   et elle montre AUSSI ce qui manque — c'est ce qu'on cherche quand on remplit. */
+.card-tags { display: flex; }
+.card-tags, body.tri-on .card-tags {
   display: flex; flex-wrap: wrap; gap: 3px;
   position: absolute; left: 4px; top: 4px; right: 30px; z-index: 3;
   pointer-events: none;
@@ -479,6 +482,13 @@ body.tri-on .card-tags {
 .card-tags .ct.ct-part { background: rgba(235,211,160,0.94); color: #0f2f3a; }
 .card-tags .ct.ct-salle { background: rgba(156,198,221,0.94); color: #06283a; }
 .gallery[data-dense="2"] .card-tags .ct { font-size: 8px; padding: 1px 4px; }
+/* Ce qui manque : lisible, mais discret — il ne doit pas crier plus fort que ce
+   qui est rempli. */
+.card-tags .ct.ct-plus { background: rgba(235,211,160,.18); color: #ebd3a0; }
+.card-tags .ct.ct-manque {
+  background: rgba(10,24,31,.66); color: rgba(235,211,160,.55);
+  border: 1px dashed rgba(235,211,160,.32); font-weight: 500;
+}
 
 /* Sentinel (infinite scroll trigger) */
 .sentinel {
@@ -2343,7 +2353,7 @@ body:not(.media-non-video) .drawer-section.range-photos { display: none; }
 <!-- Le ?v= est la clé de cache du navigateur. Fige au 13 juillet, il servait
      l'ancien app.js meme quand Netlify en deployait un neuf : trois deploiements
      de suite n'ont rien change a l'ecran. A BUMPER A CHAQUE FOIS. -->
-<script src="app.js?v=20260824e"></script>
+<script src="app.js?v=20260824f"></script>
 <script src="admin.js?v=20260811b"></script>
 </body>
 </html>

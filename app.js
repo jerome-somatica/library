@@ -1691,6 +1691,12 @@ function makeCard(c) {
   const pvc = pastilleVerdict(c);
   if (pvc) thumb.appendChild(pvc);
 
+  // La meme incrustation que sur les photos : salle, participante, etiquettes —
+  // et surtout ce qui MANQUE. Elle n'existait que cote photos.
+  const tagOvC = document.createElement('div');
+  tagOvC.className = 'card-tags';
+  thumb.appendChild(tagOvC);
+
   // usable for reel pastille
   if (c.usable_for_reel) {
     const ub = document.createElement('div');
@@ -1752,6 +1758,7 @@ function makeCard(c) {
 
   // Panneau de tri (visible seulement en mode tri, géré en CSS via body.tri-on)
   setCardTriVisual(card, c);
+  paintCardTagOverlay(card, c);   // salle, étiquettes, et ce qui manque
   card.appendChild(makeTriPanel(c, card));
 
   card.addEventListener('click', (e) => {
@@ -2063,15 +2070,45 @@ function applyLiveFilterHide(ids, mode) {
   return true;
 }
 
-// Overlay des tags sur la vignette (mode tri) : voir comment chaque photo est taguée d'un coup d'œil
+// « Angers · enso » ne tient pas sur une vignette de cent pixels. On garde la
+// derniere partie, celle qui distingue : enso, bressigny, maisonaura49.
+function salleCourte(v) {
+  const s = String(v || '').trim();
+  if (!s) return '';
+  const bouts = s.split('·').map(x => x.trim()).filter(Boolean);
+  return bouts.length ? bouts[bouts.length - 1] : s;
+}
+
+// Ce que porte chaque vignette, en incrustation.
+//
+// Elle n'apparaissait qu'en mode tri, et jamais sur les clips. Sur une planche de
+// cent vignettes on ne pouvait donc pas savoir lesquelles avaient deja leur salle
+// ou leurs etiquettes — il fallait les ouvrir une par une.
+//
+// L'ABSENCE est affichee, pas seulement la presence : c'est elle qu'on cherche
+// quand on remplit les trous.
 function paintCardTagOverlay(card, c) {
   const ov = card && card.querySelector('.card-tags');
   if (!ov) return;
   const out = [];
   const tags = Array.isArray(c.tri_tags) ? c.tri_tags : [];
-  for (const t of tags) { const lbl = TAG_SHORT[t]; if (lbl) out.push(`<span class="ct ${TAG_CLASS[t] || ''}">${lbl}</span>`); }
+  // Sur une vignette de cent pixels, huit etiquettes empilees masquent la photo.
+  // On en montre deux, et on dit combien restent — le detail est dans la fiche.
+  const MAX = 2;
+  const lisibles = tags.map(t => [t, TAG_SHORT[t]]).filter(([, l]) => l);
+  for (const [t, lbl] of lisibles.slice(0, MAX)) {
+    out.push(`<span class="ct ${TAG_CLASS[t] || ''}">${lbl}</span>`);
+  }
+  if (lisibles.length > MAX) {
+    out.push(`<span class="ct ct-plus" title="${escapeAttr(lisibles.map(([, l]) => l).join(', '))}">+${lisibles.length - MAX}</span>`);
+  }
   if (c.tri_participante) out.push(`<span class="ct ct-part">${escapeHtml(c.tri_participante)}</span>`);
-  if (c.tri_salle) out.push(`<span class="ct ct-salle">📍${escapeHtml(c.tri_salle)}</span>`);
+  if (c.tri_salle) {
+    out.push(`<span class="ct ct-salle" title="${escapeAttr(c.tri_salle)}">📍${escapeHtml(salleCourte(c.tri_salle))}</span>`);
+  } else {
+    out.push('<span class="ct ct-manque" title="Aucune salle renseignée">📍 —</span>');
+  }
+  if (!tags.length) out.push('<span class="ct ct-manque" title="Aucune étiquette">🏷 —</span>');
   ov.innerHTML = out.join('');
 }
 
@@ -2079,7 +2116,7 @@ async function updateTri(c, card, patch) {
   Object.assign(c, patch);
   recomputeUsable(c);
   if (card) setCardTriVisual(card, c);
-  if (card && !isVideoMode()) paintCardTagOverlay(card, c);
+  paintCardTagOverlay(card, c);   // clips compris : ils ont une salle eux aussi
   const { error } = await sb.from(mediaTable()).update(patch).eq('id', c.id);
   if (error) { console.error('updateTri', error); toast('Tri non sauvegardé', 'error'); return false; }
   return true;
