@@ -431,7 +431,7 @@ async function bootstrapCatalogs() {
   populateSelect(ambianceFilter, state.catalog.ambiances, 'Toutes ambiances');
   populateSelect(movementFilter, state.catalog.movements, 'Tous mouvements');
   populateSelect(lightingFilter, state.catalog.lightings, 'Tous éclairages');
-  populateSelect(locationFilter, state.catalog.locations, 'Tous lieux');
+  populateSelect(locationFilter, state.catalog.locations, 'Toutes villes (GPS)');
   populateMultiSelect('emotions', state.catalog.emotions);
   populateMultiSelect('tags', state.catalog.tags);
   populateMultiSelect('personsNames', state.catalog.personsNames);
@@ -787,7 +787,14 @@ function openImageModal(c) {
   modalBody.innerHTML = '';
   const dt = c.created_at ? new Date(c.created_at).toLocaleString('fr-FR') : null;
   const rows = state.mediaType === 'photo'
-    ? [['Sujet', c.subject], ['Catégorie', c.category], ['Ambiance', c.ambiance], ['Qualité', c.quality_score != null ? c.quality_score + '/10' : null], ['Tags', (c.tags || []).join(', ')]]
+    // Salle et participante sont ce qu'on VIENT de saisir : sans elles dans la fiche,
+    // rien ne confirmait que la saisie avait pris. On les pose juste apres le sujet,
+    // avant les champs qui viennent de l'analyse.
+    ? [['Sujet', c.subject], ['Salle', c.tri_salle], ['Participante', c.tri_participante],
+       ['Catégorie', c.category], ['Ambiance', c.ambiance],
+       ['Qualité', c.quality_score != null ? c.quality_score + '/10' : null],
+       ['Tags', (c.tags || []).join(', ')],
+       ['Étiquettes de tri', (c.tri_tags || []).join(', ')]]
     : state.mediaType === 'videoia'
     ? [['Prompt', c.prompt], ['Modèle', c.model], ['Durée', c.duration_sec ? c.duration_sec + ' s' : null], ['Date', dt], ['Tags', (c.tags || []).join(', ')]]
     : [['Prompt', c.prompt], ['Modèle', c.model], ['Source', c.source], ['Tags', (c.tags || []).join(', ')]];
@@ -1951,10 +1958,20 @@ async function loadPhotoCatalog(force) {
     // On lit les DEUX banques. Avant, seule image_library etait interrogee : sur
     // l'onglet Video la liste des salles restait vide, donc impossible d'en poser
     // une en lot — c'est ce qui ne marchait pas le 24/08/2026.
-    const [im, vi] = await Promise.all([
-      sb.from('image_library').select('tri_salle,tri_participante').limit(3000),
-      sb.from('video_library').select('tri_salle,tri_participante').limit(3000),
-    ]);
+    // .limit(3000) ne sert a rien : PostgREST s'arrete a 1000 lignes et ne le dit
+    // pas. On demande donc explicitement la plage, par paquets — la meme troncature
+    // muette qui avait fait disparaitre 8 sequences sur 11 le 09/08.
+    const parPaquets = async (table) => {
+      const tout = [];
+      for (let d = 0; d < 6000; d += 1000) {
+        const r = await sb.from(table).select('tri_salle,tri_participante').range(d, d + 999);
+        if (r.error) return { error: r.error, data: tout };
+        tout.push(...(r.data || []));
+        if ((r.data || []).length < 1000) break;
+      }
+      return { error: null, data: tout };
+    };
+    const [im, vi] = await Promise.all([parPaquets('image_library'), parPaquets('video_library')]);
     if (im.error) { _photoCatalogLoaded = false; return; }
     const data = [...(im.data || []), ...(vi.error ? [] : (vi.data || []))];
     const salles = new Set();
@@ -2577,6 +2594,12 @@ if (triRefusedCheckbox) triRefusedCheckbox.checked = !!state.filters.triRefused;
 if (triBugCheckbox) triBugCheckbox.checked = !!state.filters.triBug;
 const triProgressEl = document.getElementById('tri-progress');
 if (triProgressEl) { triProgressEl.title = 'Cliquer pour rafraîchir'; triProgressEl.addEventListener('click', updateTriProgress); }
+// Le catalogue au DEMARRAGE. Il n'etait charge qu'au changement d'onglet : au
+// premier affichage les listes salle et participante etaient donc vides, et poser
+// une salle en lot semblait ne pas marcher. Il fallait changer d'onglet et revenir
+// pour que ca fonctionne — personne ne pouvait deviner ca.
+loadPhotoCatalog();
+
 buildBatchTriBar();
 setTriMode((() => { try { return localStorage.getItem('library_tri_mode') === '1'; } catch (e) { return false; } })());
 
