@@ -89,7 +89,7 @@ const DEFAULT_FILTERS = {
   // Les notes ecrites par l'analyse. Elles vivent dans analysis_raw (clips, banques
   // generees) ou gemini_raw (photos) — d'ou le chemin JSON dans la requete plutot
   // qu'un nom de colonne. Mesure : ~100 ms, autant qu'une colonne ordinaire.
-  cible: '', verdict: '', risque: '', publie: '',
+  cible: '', verdict: '', publie: '', ville: '', cohorte: '',
   intensity: '',
   music: '',     // '' | 'with' | 'without'
   speech: '',    // '' | 'with' | 'without'
@@ -852,8 +852,14 @@ function openImageModal(c) {
 function appliquerNotes(q, f, col) {
   if (f.cible) q = q.eq(`${col}->>cible_principale`, f.cible);
   if (f.verdict) q = q.eq(`${col}->>verdict`, f.verdict);
-  if (f.risque === 'faible') q = q.eq('flagged', false);
-  if (f.risque === 'eleve') q = q.eq('flagged', true);
+  // Le risque de blocage ne filtre plus : décision de Jérôme le 14/08/2026,
+  // « laisse tomber les risques ». Le champ reste en base, il ne tranche rien.
+  //
+  // La ville se lit dans la salle, qui s'écrit « Ville · salle ». Pas de colonne
+  // dédiée : filtrer sur le préfixe évite d'inventer une donnée de plus à tenir.
+  if (f.ville) q = q.ilike('tri_salle', `${f.ville}%`);
+  if (f.cohorte === '__none__') q = q.not('tri_tags', 'cs', '{cohorte_2,cohorte_3}');
+  else if (f.cohorte) q = q.contains('tri_tags', [f.cohorte]);
   if (f.publie === 'jamais') q = q.is('used_in_reels', null);
   if (f.publie === 'deja') q = q.not('used_in_reels', 'is', null);
   return q;
@@ -948,6 +954,23 @@ function allegerBarre() {
    On pose donc « Choisir » en haut, avec ce qu'on demande vraiment. Le reste
    descend derriere « Anciens filtres », replie. Rien n'est supprime.
    ════════════════════════════════════════════════════════════════════════ */
+// Les villes se deduisent des salles deja saisies : « Angers · enso » donne
+// « Angers ». Pas de colonne de plus a tenir a jour, donc pas de nouvelle derive.
+function remplirVilles() {
+  const el = document.getElementById('fc-ville');
+  if (!el) return;
+  const villes = new Set();
+  for (const s of (state.catalog.salles || [])) {
+    const v = String(s).split('·')[0].trim();
+    if (v) villes.add(v);
+  }
+  const cur = el.value;
+  el.innerHTML = '<option value="">Toutes les villes</option>'
+    + [...villes].sort((a, b) => a.localeCompare(b, 'fr'))
+        .map(v => `<option value="${escapeAttr(v)}">${escapeHtml(v)}</option>`).join('');
+  el.value = cur;
+}
+
 function construireChoisir(tiroir) {
   if (!tiroir || tiroir.querySelector('.choisir')) return;
 
@@ -970,13 +993,7 @@ function construireChoisir(tiroir) {
         <option value="a_retoucher">À retoucher</option>
         <option value="a_ecarter">À écarter</option>
       </select></div>
-    <div class="drawer-field"><label for="fc-risque">Risque de blocage</label>
-      <select id="fc-risque">
-        <option value="">Peu importe</option>
-        <option value="faible">Faible — publiable sans réfléchir</option>
-        <option value="eleve">Élevé — à regarder avant de publier</option>
-      </select></div>
-    <div class="drawer-field"><label for="fc-publie">Publication</label>
+        <div class="drawer-field"><label for="fc-publie">Publication</label>
       <select id="fc-publie">
         <option value="">Peu importe</option>
         <option value="jamais">Jamais publié</option>
@@ -992,8 +1009,10 @@ function construireChoisir(tiroir) {
   };
   brancher('fc-cible', 'cible');
   brancher('fc-verdict', 'verdict');
-  brancher('fc-risque', 'risque');
   brancher('fc-publie', 'publie');
+  brancher('fc-ville', 'ville');
+  brancher('fc-cohorte', 'cohorte');
+  remplirVilles();
 
   /* « Retrouver » : on DEPLACE les commandes existantes, on n'en cree pas de
      nouvelles. Leurs gestionnaires sont attaches aux elements — participante,
@@ -1016,9 +1035,21 @@ function construireChoisir(tiroir) {
 
   const rec = document.createElement('section');
   rec.className = 'drawer-section retrouver';
-  rec.innerHTML = '<h4>Retrouver</h4>';
+  // Ville et Cohorte sont neuves. La salle etait enterree dans « Anciens filtres »
+  // alors que c'est le premier tri qu'on fait — 1 262 photos n'en ont pas encore.
+  rec.innerHTML = `<h4>Retrouver</h4>
+    <div class="drawer-field"><label for="fc-ville">Ville</label>
+      <select id="fc-ville"><option value="">Toutes les villes</option></select></div>
+    <div class="drawer-field"><label for="fc-cohorte">Cohorte</label>
+      <select id="fc-cohorte">
+        <option value="">Toutes</option>
+        <option value="__none__">Sans cohorte</option>
+        <option value="cohorte_2">Cohorte 2</option>
+        <option value="cohorte_3">Cohorte 3</option>
+      </select></div>`;
+  monter(rec, 'pf-salle', 'Salle');
   monter(rec, 'tri-participante-filter', 'Participante');
-  monter(rec, 'location-filter', 'Lieu');
+  monter(rec, 'location-filter', 'Ville relevée par l’appareil (GPS)');
   monter(rec, 'tri-pratique-filter', 'Pratique');
   monter(rec, 'duration-filter', 'Durée');
   if (rec.querySelectorAll('.drawer-field').length) {
@@ -1995,6 +2026,7 @@ async function loadPhotoCatalog(force) {
     // Le catalogue arrive APRES la construction de la barre groupee : sans ce
     // redessin, ses listes restaient celles d'avant — c'est-a-dire vides.
     buildBatchTriBar();
+    remplirVilles();     // les villes se deduisent des salles
   } catch (e) { _photoCatalogLoaded = false; }
 }
 
