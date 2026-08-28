@@ -588,7 +588,12 @@ button.btn.danger:hover { background: rgba(255, 100, 100, 0.15); }
 .selection-bar .btn.danger:hover { background: rgba(217,138,138,0.18); }
 /* Actions groupées du mode tri (appliquer statut/tags à toute la sélection) */
 .batch-tri { display: none; gap: 5px; flex-wrap: wrap; align-items: center; }
-body.tri-on .selection-bar.active .batch-tri { display: flex; }
+/* Le panneau de saisie groupee suit la SELECTION, plus le mode tri.
+   Il etait conditionne a body.tri-on : cocher des vignettes faisait bien monter la
+   barre du bas, mais elle arrivait vide, et rien ne disait qu'il fallait d'abord
+   allumer le mode tri ailleurs dans l'ecran. Une selection est deja une intention
+   suffisante — 24/08/2026. */
+.selection-bar.active .batch-tri { display: flex; }
 .batch-tri .batch-sep { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(235,211,160,0.5); margin: 0 2px; }
 .batch-btn { padding: 4px 9px; border-radius: 6px; border: 1px solid rgba(235,211,160,0.3); background: transparent; color: #ebd3a0; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .batch-btn:hover { background: rgba(235,211,160,0.1); }

@@ -629,7 +629,10 @@ function makeImageCard(c) {
   paintCardTagOverlay(card, c);
   card.appendChild(makeImageTriPanel(c, card));
   card.addEventListener('click', (e) => {
-    if (state.triMode) handleSelectClick(c.id, e.shiftKey);
+    // ⇧clic = selection en serie, en mode tri OU non : c'est le geste attendu
+    // partout ailleurs, et sans lui la selection multiple hors mode tri se limitait
+    // a viser les petites cases une par une.
+    if (state.triMode || e.shiftKey) handleSelectClick(c.id, e.shiftKey);
     else openImageModal(c);
   });
   card.addEventListener('mouseenter', () => { hoveredCardId = c.id; });
@@ -1743,7 +1746,8 @@ function makeCard(c) {
   card.appendChild(makeTriPanel(c, card));
 
   card.addEventListener('click', (e) => {
-    if (state.triMode) handleSelectClick(c.id, e.shiftKey); // en mode tri, clic = sélection
+    // en mode tri, clic = selection · ⇧clic = selection en serie dans les deux modes
+    if (state.triMode || e.shiftKey) handleSelectClick(c.id, e.shiftKey);
     else openModal(c.id);
   });
   card.addEventListener('mouseenter', () => { hoveredCardId = c.id; });
@@ -3034,7 +3038,8 @@ async function applyBatchParticipante(v) {
 
 // Sélectionne toutes les vignettes actuellement chargées (pour taguer en lot)
 function selectAllVisible() {
-  if (!state.triMode) { toast('Active le mode tri'); return; }
+  // Selectionner tout n'a plus besoin du mode tri : la saisie groupee non plus.
+
   for (const c of state.clips) state.selection.add(c.id);
   document.querySelectorAll('.gallery .card').forEach(el => {
     el.classList.add('selected');
