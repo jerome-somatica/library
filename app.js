@@ -870,7 +870,7 @@ function appliquerNotes(q, f, col) {
   // La ville se lit dans la salle, qui s'écrit « Ville · salle ». Pas de colonne
   // dédiée : filtrer sur le préfixe évite d'inventer une donnée de plus à tenir.
   if (f.ville) q = q.ilike('tri_salle', `${f.ville}%`);
-  if (f.cohorte === '__none__') q = q.not('tri_tags', 'cs', '{cohorte_2,cohorte_3}');
+  if (f.cohorte === '__none__') q = q.not('tri_tags', 'cs', '{cohorte_1,cohorte_2,cohorte_3}');
   else if (f.cohorte) q = q.contains('tri_tags', [f.cohorte]);
   if (f.publie === 'jamais') q = q.is('used_in_reels', null);
   if (f.publie === 'deja') q = q.not('used_in_reels', 'is', null);
@@ -1056,6 +1056,7 @@ function construireChoisir(tiroir) {
       <select id="fc-cohorte">
         <option value="">Toutes</option>
         <option value="__none__">Sans cohorte</option>
+        <option value="cohorte_1">Cohorte 1</option>
         <option value="cohorte_2">Cohorte 2</option>
         <option value="cohorte_3">Cohorte 3</option>
       </select></div>`;
@@ -2328,6 +2329,34 @@ function renderTriUnivers(c, card) {
   return wrap;
 }
 
+/* Cohorte : exclusive comme Univers (une seance appartient a UNE cohorte).
+   Demande le 13/09 : "je puisse trier... definir la cohorte... par lot". Le
+   filtre existait deja (drawer) ; ceci est l'action manquante pour la POSER. */
+function renderTriCohorte(c, card) {
+  const wrap = document.createElement('div');
+  wrap.className = 'tri-tags g-cohorte';
+  const COHORTES = [['cohorte_1', 'Cohorte 1'], ['cohorte_2', 'Cohorte 2'], ['cohorte_3', 'Cohorte 3']];
+  const actuel = (Array.isArray(c.tri_tags) ? c.tri_tags : []).find(t => t.startsWith('cohorte_')) || '';
+  [['', 'Aucune'], ...COHORTES].forEach(([k, l]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tri-chip' + (k === actuel ? ' on' : '');
+    b.textContent = l;
+    b.addEventListener('click', () => {
+      const ids = triTargets(c);
+      for (const id of ids) {
+        const cc = state.clips.find(x => x.id === id); if (!cc) continue;
+        const tags = (Array.isArray(cc.tri_tags) ? cc.tri_tags : []).filter(t => !t.startsWith('cohorte_'));
+        if (k) tags.push(k);
+        updateTri(cc, cardEl(id), { tri_tags: tags });
+      }
+      wrap.querySelectorAll('.tri-chip').forEach(x => x.classList.toggle('on', x === b));
+      if (ids.length > 1) toast(`Cohorte posée sur ${ids.length} éléments`);
+    });
+    wrap.appendChild(b);
+  });
+  return wrap;
+}
+
 function makeTriPanel(c, card) {
   const p = document.createElement('div');
   p.className = 'tri-panel';
@@ -2424,6 +2453,8 @@ function makeTriPanel(c, card) {
   corps.hidden = true;
 
   corps.appendChild(renderTriUnivers(c, card));
+  corps.appendChild(triDivider());
+  corps.appendChild(renderTriCohorte(c, card));
   corps.appendChild(triDivider());
   corps.appendChild(renderTriTagWrap(c, card, TRI_CTX1));
   corps.appendChild(renderTriTagWrap(c, card, TRI_CTX2));
