@@ -113,6 +113,7 @@ const DEFAULT_FILTERS = {
   triFacilitateur: '', // filtre photo : facilitateur (facil_*)
   triSalle: '',        // filtre photo : salle / lieu
   triTagged: '',       // filtre photo : '' | 'untagged' (sans étiquette) | 'tagged'
+  triUnivers: 'somatica', // 'somatica' (défaut) | 'hors' | '' (tout). Un média hors Somatica ne se voit que si on le demande.
   emotions: [],  // multi
   tags: [],      // multi
   personsNames: [],  // multi (noms Apple)
@@ -551,6 +552,11 @@ function buildImageQuery() {
   else if (f.triContexte) q = q.contains('tri_tags', [f.triContexte]);
   if (f.triRole === '__none__') q = q.not('tri_tags', 'ov', '{temoignage_eleve,cours,pov,demo,visite_salle}');
   else if (f.triRole) q = q.contains('tri_tags', [f.triRole]);
+  // Univers. « hors_somatica » est la porte posee a l'import (chantier, autre metier) :
+  // par defaut Library montre Somatica, comme les moteurs. Le reste se demande.
+  if (f.triUnivers === 'somatica') q = q.not('tri_tags', 'cs', '{hors_somatica}');
+  else if (f.triUnivers === 'hors') q = q.contains('tri_tags', ['hors_somatica']);
+  else if (f.triUnivers && f.triUnivers.startsWith('u_')) q = q.contains('tri_tags', [f.triUnivers]);
   if (state.mediaType === 'photo') {
     if (f.triSalle === '__none__') q = q.is('tri_salle', null);
     else if (f.triSalle) q = q.ilike('tri_salle', `%${f.triSalle}%`);
@@ -1273,6 +1279,11 @@ function buildQuery() {
   // dans la mauvaise requete — d'ou les temoignages introuvables (19/08).
   if (f.triRole === '__none__') q = q.not('tri_tags', 'ov', '{temoignage_eleve,cours,pov,demo,visite_salle}');
   else if (f.triRole) q = q.contains('tri_tags', [f.triRole]);
+  // Univers. « hors_somatica » est la porte posee a l'import (chantier, autre metier) :
+  // par defaut Library montre Somatica, comme les moteurs. Le reste se demande.
+  if (f.triUnivers === 'somatica') q = q.not('tri_tags', 'cs', '{hors_somatica}');
+  else if (f.triUnivers === 'hors') q = q.contains('tri_tags', ['hors_somatica']);
+  else if (f.triUnivers && f.triUnivers.startsWith('u_')) q = q.contains('tri_tags', [f.triUnivers]);
   if (f.triFacilitateur === '__none__') q = q.not('tri_tags', 'ov', '{facil_jerome,facil_nath,facil_duo}');
   else if (f.triFacilitateur) q = q.contains('tri_tags', [f.triFacilitateur]);
   if (f.triParticipante === '__none__') q = q.is('tri_participante', null);
@@ -1877,7 +1888,9 @@ let VOCAB_SALLES = [];
 // « facil_jerome ». On retrouve la même forme ici, sinon les pastilles ne
 // s'allumeraient pas sur les clips qu'il a étiquetés.
 function vocabCle(prefixe, valeur) {
-  const s = String(valeur).normalize('NFD').replace(/[̀-ͯ]/g, '')
+  // ligatures d'abord : NFD ne décompose pas « œ » — même règle que _slug_tag côté studio
+  const s = String(valeur).replace(/œ/g, 'oe').replace(/Œ/g, 'OE').replace(/æ/g, 'ae').replace(/Æ/g, 'AE')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
   return prefixe ? prefixe + s : s;
 }
@@ -1896,6 +1909,10 @@ async function chargerVocabulaire() {
       const cle = v.includes('deux') || v.includes('&') ? 'facil_duo' : vocabCle('facil_', x.valeur);
       return [cle, x.valeur];
     });
+    // Les univers que Jérôme a nommés (famille « univers ») : étiquette u_<slug>
+    VOCAB_UNIVERS = par('univers').map(x => [vocabCle('u_', x.valeur), x.valeur]);
+    VOCAB_UNIVERS.forEach(([k, l]) => { TAG_SHORT[k] = l; TAG_CLASS[k] = 'ct-hors'; });
+    majSelectUnivers();
     VOCAB_SALLES = [
       ...par('salle').map(x => x.parent ? `${x.parent} · ${x.valeur}` : x.valeur),
       ...par('ville').map(x => x.valeur),
@@ -1918,6 +1935,15 @@ async function ajouterAuVocabulaire(famille, valeur, parent) {
 }
 
 // Rendu d'une ligne de cases à cocher (tags) pour une liste donnée
+function majSelectUnivers() {
+  const sel = document.getElementById('pf-univers'); if (!sel) return;
+  const cur = sel.value || 'somatica';
+  sel.innerHTML = '<option value="somatica">Somatica</option>'
+    + VOCAB_UNIVERS.map(([k, l]) => `<option value="${k}">${escapeHtml(l)}</option>`).join('')
+    + '<option value="hors">Hors Somatica (tous)</option><option value="">Tout</option>';
+  sel.value = [...sel.options].some(o => o.value === cur) ? cur : 'somatica';
+}
+
 function triDivider() {
   const d = document.createElement('div');
   d.className = 'tri-sep';
@@ -2072,8 +2098,9 @@ const CTX_VALUES = ['formation', 'seance', 'individuel'];
 // Le ROLE de la piece — ce qu'elle montre, pas ou ni avec qui. « temoignage_eleve » etait
 // pose sur 18 clips depuis le derushage sans qu'aucun filtre ne permette de les ressortir.
 const ROLE_VALUES = ['temoignage_eleve', 'cours', 'pov', 'demo', 'visite_salle'];
-const TAG_SHORT = { facil_jerome: 'Jérôme', facil_nath: 'Nath', facil_duo: 'Les deux', formation: 'Formation', seance: 'Séance', individuel: 'Individuel', innerdance: 'Inner', breathwork: 'Breath', qi_cleansing: 'Qi', cacao: 'Cacao' };
-const TAG_CLASS = { facil_jerome: 'ct-facil', facil_nath: 'ct-facil', facil_duo: 'ct-facil', formation: 'ct-ctx', seance: 'ct-ctx', individuel: 'ct-ctx', innerdance: 'ct-prat', breathwork: 'ct-prat', qi_cleansing: 'ct-prat', cacao: 'ct-prat' };
+let VOCAB_UNIVERS = [];   // [[u_slug, libellé]] depuis somatica_vocabulaire
+const TAG_SHORT = { facil_jerome: 'Jérôme', facil_nath: 'Nath', facil_duo: 'Les deux', formation: 'Formation', seance: 'Séance', individuel: 'Individuel', innerdance: 'Inner', breathwork: 'Breath', qi_cleansing: 'Qi', cacao: 'Cacao', hors_somatica: 'Hors Somatica', chantier: 'Chantier', import_photos: 'Photos' };
+const TAG_CLASS = { facil_jerome: 'ct-facil', facil_nath: 'ct-facil', facil_duo: 'ct-facil', formation: 'ct-ctx', seance: 'ct-ctx', individuel: 'ct-ctx', innerdance: 'ct-prat', breathwork: 'ct-prat', qi_cleansing: 'ct-prat', cacao: 'ct-prat', hors_somatica: 'ct-hors', chantier: 'ct-hors' };
 function hasAnyTag(c, arr) { return Array.isArray(c.tri_tags) && c.tri_tags.some(t => arr.includes(t)); }
 function isPhotoTagged(c) { return (Array.isArray(c.tri_tags) && c.tri_tags.length > 0) || !!c.tri_participante || !!c.tri_salle; }
 
@@ -2088,6 +2115,9 @@ function photoMatchesFilters(c) {
   else if (f.triPratique) { if (!triHas(c, f.triPratique)) return false; }
   if (f.triFacilitateur === '__none__') { if (hasAnyTag(c, FACIL_VALUES)) return false; }
   else if (f.triFacilitateur) { if (!triHas(c, f.triFacilitateur)) return false; }
+  if (f.triUnivers === 'somatica') { if (triHas(c, 'hors_somatica')) return false; }
+  else if (f.triUnivers === 'hors') { if (!triHas(c, 'hors_somatica')) return false; }
+  else if (f.triUnivers && f.triUnivers.startsWith('u_')) { if (!triHas(c, f.triUnivers)) return false; }
   if (f.triContexte === '__none__') { if (hasAnyTag(c, CTX_VALUES)) return false; }
   else if (f.triContexte) { if (!triHas(c, f.triContexte)) return false; }
   if (f.triRole === '__none__') { if (hasAnyTag(c, ROLE_VALUES)) return false; }
@@ -2166,7 +2196,7 @@ function paintCardTagOverlay(card, c) {
   } else {
     out.push('<span class="ct ct-manque" title="Aucune salle renseignée">📍 —</span>');
   }
-  if (!tags.length) out.push('<span class="ct ct-manque" title="Aucune étiquette">🏷 —</span>');
+  if (!tags.length && !tags.includes('hors_somatica')) out.push('<span class="ct ct-manque" title="Aucune étiquette">🏷 —</span>');
   ov.innerHTML = out.join('');
 }
 
@@ -2267,6 +2297,37 @@ function maybeHideTriaged(c, card) {
   if (state.filters.triHide && !state.filters.triRefused && !state.filters.triBug && isTriaged(c) && card.isConnected) removeCardFromGrid(c, card);
 }
 
+/* Univers : Somatica, ou l'un des métiers que Jérôme a nommés. Exclusif : poser
+   « Maître d'œuvre » écrit hors_somatica + u_maitre_oeuvre et retire tout autre u_* ;
+   revenir à Somatica retire les deux. C'est la porte que lit banque_pour_montage :
+   hors Somatica = jamais tiré au sort par les moteurs. */
+function renderTriUnivers(c, card) {
+  const wrap = document.createElement('div');
+  wrap.className = 'tri-tags g-univers';
+  const actuel = (Array.isArray(c.tri_tags) ? c.tri_tags : []).find(t => t.startsWith('u_'))
+    || (triHas(c, 'hors_somatica') ? 'hors' : 'somatica');
+  const choix = [['somatica', 'Somatica'], ...VOCAB_UNIVERS];
+  if (actuel === 'hors') choix.push(['hors', 'Hors Somatica']);
+  choix.forEach(([k, l]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tri-chip' + (k === actuel ? ' on' : '') + (k !== 'somatica' ? ' hors' : '');
+    b.textContent = l; b.title = k === 'somatica' ? 'Contenu Somatica (défaut)' : 'Hors Somatica : jamais tiré au sort par les moteurs';
+    b.addEventListener('click', () => {
+      const ids = triTargets(c);
+      for (const id of ids) {
+        const cc = state.clips.find(x => x.id === id); if (!cc) continue;
+        let tags = (Array.isArray(cc.tri_tags) ? cc.tri_tags : []).filter(t => !t.startsWith('u_') && t !== 'hors_somatica' && t !== 'chantier');
+        if (k !== 'somatica') tags = [...tags, 'hors_somatica', ...(k.startsWith('u_') ? [k] : [])];
+        updateTri(cc, cardEl(id), { tri_tags: tags });
+      }
+      wrap.querySelectorAll('.tri-chip').forEach(x => x.classList.toggle('on', x === b));
+      if (ids.length > 1) toast(`Univers posé sur ${ids.length} éléments`);
+    });
+    wrap.appendChild(b);
+  });
+  return wrap;
+}
+
 function makeTriPanel(c, card) {
   const p = document.createElement('div');
   p.className = 'tri-panel';
@@ -2362,6 +2423,8 @@ function makeTriPanel(c, card) {
   corps.className = 'tri-etiq-corps';
   corps.hidden = true;
 
+  corps.appendChild(renderTriUnivers(c, card));
+  corps.appendChild(triDivider());
   corps.appendChild(renderTriTagWrap(c, card, TRI_CTX1));
   corps.appendChild(renderTriTagWrap(c, card, TRI_CTX2));
   corps.appendChild(triDivider());
@@ -2490,6 +2553,7 @@ function syncFiltersToUI() {
   setSel('pf-rating', String(f.triRatingMin || 0));
   setSel('pf-facil', f.triFacilitateur || '');
   setSel('pf-contexte', f.triContexte || '');
+  setSel('pf-univers', f.triUnivers ?? 'somatica');
   setSel('pf-pratique', f.triPratique || '');
   setSel('pf-salle', f.triSalle || '');
   setSel('pf-participante', f.triParticipante || '');
@@ -2562,6 +2626,7 @@ wireTriSel('pf-status', 'triStatus', false);
 wireTriSel('pf-rating', 'triRatingMin', true);
 wireTriSel('pf-facil', 'triFacilitateur', false);
 wireTriSel('pf-contexte', 'triContexte', false);
+wireTriSel('pf-univers', 'triUnivers', false);
 wireTriSel('pf-role', 'triRole', false);
 wireTriSel('pf-pratique', 'triPratique', false);
 wireTriSel('pf-salle', 'triSalle', false);

@@ -479,6 +479,8 @@ body.tri-on .card .thumb .usable-badge { display: none; }
 .card-tags .ct.ct-facil { background: rgba(216,182,214,0.94); color: #2c0f2a; }
 .card-tags .ct.ct-ctx { background: rgba(156,198,221,0.5); color: #ebd3a0; }
 .card-tags .ct.ct-prat { background: rgba(159,217,196,0.94); color: #06322a; }
+    .ct-hors { background: rgba(232,138,138,.18); color: #e88a8a; }  /* hors Somatica — 04/09/2026 */
+    .tri-chip.hors.on { background: rgba(232,138,138,.25); border-color: #e88a8a; color: #f3c2c2; }
 .card-tags .ct.ct-part { background: rgba(235,211,160,0.94); color: #0f2f3a; }
 .card-tags .ct.ct-salle { background: rgba(156,198,221,0.94); color: #06283a; }
 .gallery[data-dense="2"] .card-tags .ct { font-size: 8px; padding: 1px 4px; }
@@ -1844,6 +1846,11 @@ body:not(.media-non-video) .drawer-section.range-photos { display: none; }
         <option value="facil_nath">Nath</option>
         <option value="facil_duo">Les deux</option>
       </select>
+      <select id="pf-univers" title="Univers : Somatica, ou les médias importés pour un autre métier">
+        <option value="somatica">Somatica</option>
+        <option value="hors">Hors Somatica</option>
+        <option value="">Tout</option>
+      </select>
       <select id="pf-contexte" title="Contexte">
         <option value="">Tous contextes</option>
         <option value="__none__">Sans contexte</option>
@@ -2372,7 +2379,7 @@ body:not(.media-non-video) .drawer-section.range-photos { display: none; }
 <!-- Le ?v= est la clé de cache du navigateur. Fige au 13 juillet, il servait
      l'ancien app.js meme quand Netlify en deployait un neuf : trois deploiements
      de suite n'ont rien change a l'ecran. A BUMPER A CHAQUE FOIS. -->
-<script src="app.js?v=20260828b"></script>
+<script src="app.js?v=20260904b"></script>
 <script src="admin.js?v=20260811b"></script>
 </body>
 </html>
