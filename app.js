@@ -4067,3 +4067,225 @@ allegerBarre();                   // 101 commandes visibles -> l'essentiel, le r
 checkSession().then(() => initPickerModeUI());
 // Au cas où la session existe déjà (onAuthStateChange), on s'assure que la bannière s'affiche
 setTimeout(() => initPickerModeUI(), 300);
+
+// ================= ACCÈS ÉLÈVES (liens secrets, 13/09/2026 — v2) =================
+// Rien n'est accessible par défaut. Jérôme coche explicitement chaque photo/vidéo
+// dans un picker avant de créer le lien : "je ne veux pas qu'elles puissent tout
+// récupérer, seulement ce que j'autorise". Le tag/nom ne sert qu'à PROPOSER des
+// candidats ; ce qui donne vraiment accès, c'est la sélection cochée ici.
+const ELEVE_FN = 'https://zrdlvoovrnglxcgoyyeb.supabase.co/functions/v1/eleve-liens-admin';
+// Même posture que la clé anon déjà exposée dans ce fichier : Library n'a pas de
+// connexion, personne d'autre que Jérôme ne connaît son adresse. Le vrai
+// cloisonnement protège les ÉLÈVES (page eleve.html, sans ce jeton) — pas cet écran.
+const ELEVE_ADMIN_TOKEN = 'qhrjT6BAtmudaBfZKwKpusB_Y4fb4SRxxs05NIF3qJ4';
+const ELEVE_PAGE_BASE = location.origin + location.pathname.replace(/[^/]*$/, '') + 'eleve.html';
+
+const ELEVE = { candidats: [], choisis: new Set(), editionId: null };
+
+async function eleveApi(path, opts = {}) {
+  const r = await fetch(ELEVE_FN + path, {
+    ...opts,
+    headers: { 'Authorization': `Bearer ${ELEVE_ADMIN_TOKEN}`, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+  });
+  return r.json();
+}
+
+function eleveReinitialiserFormulaire() {
+  ELEVE.candidats = []; ELEVE.choisis = new Set(); ELEVE.editionId = null;
+  $('eleve-participante').value = '';
+  $('eleve-participante').disabled = false;
+  $('eleve-nom-affiche').value = '';
+  $('eleve-note').value = '';
+  $('eleve-compte').textContent = '';
+  $('eleve-picker').hidden = true;
+  $('eleve-grille').innerHTML = '';
+  $('eleve-filtre-actif').textContent = '';
+  $('eleve-annuler-edition').hidden = true;
+  eleveMajBoutonCreer();
+}
+
+async function eleveOuvrir() {
+  $('eleve-modal-bg').style.display = 'flex';
+  eleveReinitialiserFormulaire();
+  eleveChargerParticipantes();
+  eleveChargerListe();
+}
+function eleveFermer() { $('eleve-modal-bg').style.display = 'none'; }
+
+async function eleveChargerParticipantes() {
+  const dl = $('eleve-noms-connus');
+  try {
+    const d = await eleveApi('?action=participantes');
+    if (!d.ok) return;
+    dl.innerHTML = d.participantes.map(p =>
+      `<option value="${escapeAttr(p.nom)}">${p.photos} photo(s), ${p.videos} vidéo(s)</option>`).join('');
+  } catch (e) { /* pas bloquant : la saisie libre marche quand même */ }
+}
+
+let eleveRechercheTimer = null;
+function eleveSurSaisieNom() {
+  clearTimeout(eleveRechercheTimer);
+  const nom = $('eleve-participante').value.trim();
+  const zone = $('eleve-compte');
+  if (!nom) { zone.textContent = ''; zone.className = ''; $('eleve-picker').hidden = true; eleveMajBoutonCreer(); return; }
+  zone.textContent = 'recherche…'; zone.className = '';
+  eleveRechercheTimer = setTimeout(() => eleveChercherCandidats(nom), 400);
+}
+
+async function eleveChercherCandidats(nom) {
+  const zone = $('eleve-compte');
+  let d;
+  try { d = await eleveApi(`?action=medias&nom=${encodeURIComponent(nom)}`); }
+  catch (e) { zone.textContent = ''; return; }
+  if (!d.ok) { zone.textContent = ''; return; }
+  ELEVE.candidats = d.medias || [];
+  const nPhotos = ELEVE.candidats.filter(m => m.kind === 'photo').length;
+  const nVideos = ELEVE.candidats.length - nPhotos;
+  if (!ELEVE.candidats.length) {
+    zone.textContent = 'Aucun média trouvé — vérifie l’orthographe exacte utilisée dans le tri';
+    zone.className = 'eleve-vide';
+    $('eleve-picker').hidden = true;
+    eleveMajBoutonCreer();
+    return;
+  }
+  zone.textContent = `${nPhotos} photo(s), ${nVideos} vidéo(s) trouvées — coche ce qu'elle peut récupérer`;
+  zone.className = '';
+  if (!$('eleve-nom-affiche').value.trim()) $('eleve-nom-affiche').value = nom;
+  $('eleve-picker').hidden = false;
+  $('eleve-filtre-actif').textContent = `🔒 Uniquement les photos et vidéos taguées « ${nom} »`;
+  eleveDessinerGrille();
+}
+
+function eleveDessinerGrille() {
+  const grille = $('eleve-grille');
+  grille.innerHTML = ELEVE.candidats.map((m, i) => {
+    const on = ELEVE.choisis.has(m.id);
+    const media = m.kind === 'video'
+      ? (m.thumb ? `<img src="${escapeAttr(m.thumb)}" loading="lazy">` : `<video src="${escapeAttr(m.url)}" preload="metadata" muted></video>`)
+      : `<img src="${escapeAttr(m.url)}" loading="lazy">`;
+    return `<div class="eleve-carte${on ? ' on' : ''}" data-i="${i}" title="${escapeAttr(m.nom || '')}">
+      ${media}<span class="coche">${on ? '✓' : ''}</span>
+      <span class="k">${m.kind === 'video' ? '🎬' : '🖼'}</span>
+    </div>`;
+  }).join('');
+  grille.querySelectorAll('.eleve-carte video').forEach(v => {
+    v.addEventListener('loadeddata', () => { try { v.currentTime = 0.1; } catch (e) {} }, { once: true });
+  });
+  grille.querySelectorAll('.eleve-carte').forEach(c => c.addEventListener('click', () => {
+    const m = ELEVE.candidats[+c.dataset.i];
+    ELEVE.choisis.has(m.id) ? ELEVE.choisis.delete(m.id) : ELEVE.choisis.add(m.id);
+    c.classList.toggle('on', ELEVE.choisis.has(m.id));
+    c.querySelector('.coche').textContent = ELEVE.choisis.has(m.id) ? '✓' : '';
+    eleveMajBoutonCreer();
+  }));
+}
+
+function eleveMajBoutonCreer() {
+  const btn = $('eleve-creer-btn');
+  const n = ELEVE.choisis.size;
+  btn.disabled = n === 0;
+  if (ELEVE.editionId) {
+    btn.textContent = n ? `Enregistrer la sélection (${n})` : 'Enregistrer (tout retirer)';
+    btn.disabled = false;   // en édition, retomber à 0 = couper l'accès : c'est un choix valide
+  } else {
+    btn.textContent = n ? `Créer le lien (${n})` : 'Créer le lien';
+  }
+}
+
+async function eleveCreerOuEnregistrer() {
+  const n = ELEVE.choisis.size;
+  const photo_ids = ELEVE.candidats.filter(m => m.kind === 'photo' && ELEVE.choisis.has(m.id)).map(m => m.id);
+  const video_ids = ELEVE.candidats.filter(m => m.kind === 'video' && ELEVE.choisis.has(m.id)).map(m => m.id);
+  const btn = $('eleve-creer-btn'); const avant = btn.textContent; btn.disabled = true; btn.textContent = 'Enregistrement…';
+  try {
+    if (ELEVE.editionId) {
+      const d = await eleveApi('', { method: 'PATCH', body: JSON.stringify({ id: ELEVE.editionId, photo_ids, video_ids }) });
+      if (!d.ok) { toast('Impossible : ' + (d.error || '?'), 'error'); return; }
+      toast(n ? `Sélection mise à jour (${n} média${n > 1 ? 's' : ''})` : 'Sélection vidée — le lien ne montre plus rien');
+    } else {
+      const nom_affiche = $('eleve-nom-affiche').value.trim();
+      const tri_participante = $('eleve-participante').value.trim();
+      const note = $('eleve-note').value.trim();
+      if (!tri_participante || !nom_affiche) { toast('Le nom et l’affichage sont obligatoires', 'error'); return; }
+      const d = await eleveApi('', { method: 'POST', body: JSON.stringify({ tri_participante, nom_affiche, note, photo_ids, video_ids }) });
+      if (!d.ok) { toast('Impossible : ' + (d.error || '?'), 'error'); return; }
+      const lien = `${ELEVE_PAGE_BASE}?t=${d.lien.token}`;
+      await navigator.clipboard?.writeText(lien).catch(() => {});
+      toast(`Lien créé et copié — ${n} média${n > 1 ? 's' : ''} accessible${n > 1 ? 's' : ''}`);
+    }
+    eleveReinitialiserFormulaire();
+    eleveChargerListe();
+  } finally { btn.disabled = false; btn.textContent = avant; }
+}
+
+async function eleveModifierSelection(id, nomParticipante) {
+  eleveReinitialiserFormulaire();
+  ELEVE.editionId = id;
+  $('eleve-participante').value = nomParticipante;
+  $('eleve-participante').disabled = true;   // on modifie la sélection, pas le nom recherché
+  $('eleve-annuler-edition').hidden = false;
+  $('eleve-compte').textContent = 'chargement…';
+  const d = await eleveApi('?action=medias&nom=' + encodeURIComponent(nomParticipante));
+  if (!d.ok) { $('eleve-compte').textContent = 'Erreur de chargement'; return; }
+  ELEVE.candidats = d.medias || [];
+  const liens = await eleveApi('?action=list');
+  const lien = liens.ok ? liens.liens.find(l => l.id === id) : null;
+  const deja = new Set([...(lien?.photos_autorises || []), ...(lien?.videos_autorises || [])]);
+  // Un media deja autorise mais sorti des candidats actuels (retague depuis) reste
+  // absent du picker : l'enregistrer le retirera de l'acces. Comportement voulu.
+  ELEVE.choisis = new Set([...deja].filter(id2 => ELEVE.candidats.some(m => m.id === id2)));
+  const nPhotos = ELEVE.candidats.filter(m => m.kind === 'photo').length;
+  $('eleve-compte').textContent = `${nPhotos} photo(s), ${ELEVE.candidats.length - nPhotos} vidéo(s) — ${ELEVE.choisis.size} déjà accessible(s)`;
+  $('eleve-picker').hidden = false;
+  $('eleve-filtre-actif').textContent = `🔒 Uniquement les photos et vidéos taguées « ${nomParticipante} »`;
+  eleveDessinerGrille();
+  eleveMajBoutonCreer();
+  $('eleve-modal').scrollTop = 0;
+}
+
+async function eleveChargerListe() {
+  const zone = $('eleve-liste');
+  const d = await eleveApi('?action=list').catch(() => ({ ok: false }));
+  if (!d.ok) { zone.innerHTML = '<span class="hint">Erreur de chargement</span>'; return; }
+  $('eleve-liste-compte').textContent = `${d.liens.length}`;
+  if (!d.liens.length) { zone.innerHTML = '<span class="hint">Aucun lien pour l’instant.</span>'; return; }
+  zone.innerHTML = d.liens.map(l => {
+    const lien = `${ELEVE_PAGE_BASE}?t=${l.token}`;
+    const visite = l.derniere_visite
+      ? `${l.nombre_visites} visite(s) · dernière le ${new Date(l.derniere_visite).toLocaleDateString('fr-FR')}`
+      : 'jamais ouvert';
+    return `<div class="eleve-ligne${l.revoque ? ' revoque' : ''}" data-id="${l.id}">
+      <div><div class="nom">${escapeHtml(l.nom_affiche)}</div>
+        <div class="meta">${l.n_autorises} média(s) autorisé(s) · tagué « ${escapeHtml(l.tri_participante)} »${l.note ? ' · ' + escapeHtml(l.note) : ''} · ${visite}</div></div>
+      <button class="eleve-modifier" data-id="${l.id}" data-nom="${escapeAttr(l.tri_participante)}">✎ Sélection</button>
+      <button class="eleve-copier" data-lien="${escapeAttr(lien)}">📋 Copier</button>
+      <button class="eleve-revoquer" data-id="${l.id}" data-revoque="${l.revoque}">${l.revoque ? '↩ Réactiver' : '✕ Révoquer'}</button>
+    </div>`;
+  }).join('');
+}
+
+$('btn-eleve-acces')?.addEventListener('click', eleveOuvrir);
+$('eleve-modal-close')?.addEventListener('click', eleveFermer);
+$('eleve-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'eleve-modal-bg') eleveFermer(); });
+$('eleve-participante')?.addEventListener('input', eleveSurSaisieNom);
+$('eleve-creer-btn')?.addEventListener('click', eleveCreerOuEnregistrer);
+$('eleve-annuler-edition')?.addEventListener('click', eleveReinitialiserFormulaire);
+$('eleve-tout-cocher')?.addEventListener('click', () => { ELEVE.choisis = new Set(ELEVE.candidats.map(m => m.id)); eleveDessinerGrille(); eleveMajBoutonCreer(); });
+$('eleve-tout-decocher')?.addEventListener('click', () => { ELEVE.choisis = new Set(); eleveDessinerGrille(); eleveMajBoutonCreer(); });
+$('eleve-liste')?.addEventListener('click', async e => {
+  const modifier = e.target.closest('.eleve-modifier');
+  if (modifier) { eleveModifierSelection(modifier.dataset.id, modifier.dataset.nom); return; }
+  const copier = e.target.closest('.eleve-copier');
+  if (copier) {
+    await navigator.clipboard?.writeText(copier.dataset.lien).catch(() => {});
+    const avant = copier.textContent; copier.textContent = '✓ Copié'; setTimeout(() => copier.textContent = avant, 1400);
+    return;
+  }
+  const rev = e.target.closest('.eleve-revoquer');
+  if (rev) {
+    const revoque = rev.dataset.revoque !== 'true';
+    if (revoque && !confirm('Retirer l’accès de cette élève à ses photos ? Le lien cessera de marcher immédiatement.')) return;
+    await eleveApi('', { method: 'PATCH', body: JSON.stringify({ id: rev.dataset.id, revoque }) });
+    eleveChargerListe();
+  }
+});

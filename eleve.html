@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Tes photos & vidéos — Somatica</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d1e25; --bg-card: #102832; --bg-card-hover: #133140;
+    --gold: #ebd3a0; --text-dim: #8fa3ab; --line: rgba(235,211,160,.14);
+    --vert: #87d6ad; --rouge: #e88a8a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--gold); font-family: 'Inter', sans-serif;
+    min-height: 100vh; -webkit-font-smoothing: antialiased; }
+  h1, h2 { font-family: 'Cormorant Garamond', serif; font-weight: 600; margin: 0; }
+  .page { max-width: 1100px; margin: 0 auto; padding: 28px 18px 60px; }
+  .tete { text-align: center; margin-bottom: 26px; }
+  .tete .logo { font-family: 'Cormorant Garamond', serif; font-size: 15px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; }
+  .tete h1 { font-size: 30px; }
+  .tete .sous { color: var(--text-dim); font-size: 14px; margin-top: 6px; }
+
+  .etat { text-align: center; padding: 60px 20px; color: var(--text-dim); font-size: 15px; }
+  .etat.erreur { color: var(--rouge); }
+  .etat .spin { display: inline-block; width: 22px; height: 22px; border-radius: 50%;
+    border: 2.5px solid var(--line); border-top-color: var(--gold); animation: tour 0.9s linear infinite; margin-bottom: 14px; }
+  @keyframes tour { to { transform: rotate(360deg); } }
+
+  .barre { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 18px 0 22px; flex-wrap: wrap; }
+  .filtre { background: var(--bg-card); border: 1px solid var(--line); color: var(--gold);
+    padding: 7px 16px; border-radius: 999px; font-size: 13px; cursor: pointer; font-family: inherit; }
+  .filtre.on { background: var(--gold); color: #09141A; border-color: var(--gold); font-weight: 600; }
+
+  .grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+  .carte { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: #0a1a20;
+    cursor: pointer; border: 1px solid var(--line); }
+  .carte img, .carte video { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+  .carte .kind { position: absolute; top: 7px; left: 7px; font-size: 10px; font-weight: 700; letter-spacing: .3px;
+    padding: 2px 7px; border-radius: 5px; background: rgba(235,211,160,.92); color: #09141A; }
+  .carte .duree { position: absolute; bottom: 7px; right: 7px; font-size: 11px; color: #fff;
+    background: rgba(0,0,0,.55); padding: 1px 6px; border-radius: 5px; }
+  .carte .telecharger { position: absolute; bottom: 6px; left: 6px; width: 30px; height: 30px; border-radius: 8px;
+    background: rgba(9,20,26,.75); border: 1px solid rgba(255,255,255,.3); color: #fff; display: flex;
+    align-items: center; justify-content: center; font-size: 15px; text-decoration: none; opacity: 0; transition: opacity .12s; }
+  .carte:hover .telecharger { opacity: 1; }
+  @media (hover: none) { .carte .telecharger { opacity: 1; } }
+
+  .vide { text-align: center; padding: 50px 20px; color: var(--text-dim); }
+
+  .loupe { position: fixed; inset: 0; background: rgba(4,10,14,.94); z-index: 1000; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 20px; }
+  .loupe.ouvert { display: flex; }
+  .loupe img, .loupe video { max-width: 92vw; max-height: 76vh; object-fit: contain; border-radius: 8px; box-shadow: 0 12px 44px #000; }
+  .loupe .actions { display: flex; gap: 10px; align-items: center; }
+  .loupe .dl { background: var(--gold); color: #09141A; border: 0; padding: 10px 20px; border-radius: 999px;
+    font-weight: 600; font-size: 14px; text-decoration: none; cursor: pointer; }
+  .loupe .fermer { background: transparent; border: 1px solid rgba(255,255,255,.35); color: #fff;
+    padding: 10px 18px; border-radius: 999px; font-size: 14px; cursor: pointer; font-family: inherit; }
+
+  .pied { text-align: center; margin-top: 40px; color: var(--text-dim); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="tete">
+    <div class="logo">Somatica</div>
+    <h1 id="titre">Tes photos &amp; vidéos</h1>
+    <div class="sous" id="sous-titre">un instant…</div>
+  </div>
+
+  <div id="etat" class="etat"><div class="spin"></div><div>Ouverture de tes souvenirs…</div></div>
+
+  <div id="barre" class="barre" hidden>
+    <button class="filtre on" data-f="tout">Tout</button>
+    <button class="filtre" data-f="photo">Photos</button>
+    <button class="filtre" data-f="video">Vidéos</button>
+  </div>
+
+  <div id="grille" class="grille"></div>
+  <div id="vide" class="vide" hidden>Rien à montrer pour l'instant.</div>
+
+  <div class="pied" id="pied" hidden></div>
+</div>
+
+<div class="loupe" id="loupe">
+  <div id="loupe-media"></div>
+  <div class="actions">
+    <a id="loupe-dl" class="dl" download>⬇ Télécharger</a>
+    <button class="fermer" id="loupe-fermer">Fermer</button>
+  </div>
+</div>
+
+<script>
+const FN = 'https://zrdlvoovrnglxcgoyyeb.supabase.co/functions/v1/eleve-medias';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let TOUS = [];
+let FILTRE = 'tout';
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }); }
+  catch (e) { return ''; }
+}
+function fmtDuree(s) {
+  if (!s) return '';
+  s = Math.round(s);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+function nomTelechargement(m) {
+  const ext = (m.kind === 'video' ? '.mp4' : '.jpg');
+  const base = (m.nom || m.kind).replace(/[^\w.-]+/g, '-').slice(0, 60);
+  return base.toLowerCase().endsWith(ext) ? base : base + ext;
+}
+
+async function charger() {
+  const token = new URLSearchParams(location.search).get('t');
+  const etat = $('#etat');
+  if (!token) {
+    etat.className = 'etat erreur';
+    etat.innerHTML = "Ce lien est incomplet.<br><span style='font-size:13px'>Demande à Jérôme de te renvoyer le lien complet.</span>";
+    $('#sous-titre').textContent = '';
+    return;
+  }
+  let d;
+  try {
+    const r = await fetch(`${FN}?t=${encodeURIComponent(token)}`);
+    d = await r.json();
+  } catch (e) {
+    etat.className = 'etat erreur';
+    etat.innerHTML = "Impossible de charger tes photos pour l'instant.<br><span style='font-size:13px'>Vérifie ta connexion et réessaie.</span>";
+    return;
+  }
+  if (!d.ok) {
+    etat.className = 'etat erreur';
+    etat.innerHTML = esc(d.error || "Ce lien n'est plus valide.") + "<br><span style='font-size:13px'>Demande à Jérôme un nouveau lien.</span>";
+    $('#sous-titre').textContent = '';
+    document.title = 'Lien invalide — Somatica';
+    return;
+  }
+
+  $('#sous-titre').textContent = `Bonjour ${d.nom} — ${d.total} média${d.total > 1 ? 's' : ''}`;
+  document.title = `Photos de ${d.nom} — Somatica`;
+  TOUS = d.medias || [];
+  etat.hidden = true;
+  $('#barre').hidden = TOUS.length === 0;
+  $('#pied').hidden = false;
+  $('#pied').textContent = "Ces photos et vidéos te sont réservées. Pense à les télécharger : ce lien peut être retiré à tout moment.";
+  dessiner();
+}
+
+function dessiner() {
+  const liste = FILTRE === 'tout' ? TOUS : TOUS.filter(m => m.kind === FILTRE);
+  const grille = $('#grille');
+  $('#vide').hidden = liste.length > 0;
+  if (!liste.length) { grille.innerHTML = ''; return; }
+  grille.innerHTML = liste.map((m, i) => {
+    const media = m.kind === 'video'
+      ? (m.thumb ? `<img src="${esc(m.thumb)}" loading="lazy" alt="">` : `<video src="${esc(m.url)}" preload="metadata" muted></video>`)
+      : `<img src="${esc(m.url)}" loading="lazy" alt="">`;
+    return `<div class="carte" data-i="${i}" data-f="${esc(FILTRE)}">
+      ${media}
+      <span class="kind">${m.kind === 'video' ? '🎬 VIDÉO' : '🖼 PHOTO'}</span>
+      ${m.duree ? `<span class="duree">${fmtDuree(m.duree)}</span>` : ''}
+      <a class="telecharger" href="${esc(m.url)}" download="${esc(nomTelechargement(m))}" title="Télécharger" onclick="event.stopPropagation()">⬇</a>
+    </div>`;
+  }).join('');
+  grille.querySelectorAll('.carte').forEach(c => c.addEventListener('click', () => ouvrirLoupe(liste[+c.dataset.i])));
+  // Une video sans vignette pre-calculee (thumbnail_url absent) reste noire tant que
+  // rien ne la force a peindre une image : preload="metadata" charge les infos mais
+  // Chrome n'affiche pas seul la premiere frame. Un petit saut a 0,1 s suffit.
+  grille.querySelectorAll('.carte video').forEach(v => {
+    v.addEventListener('loadeddata', () => { try { v.currentTime = 0.1; } catch (e) {} }, { once: true });
+  });
+}
+
+function ouvrirLoupe(m) {
+  const zone = $('#loupe-media');
+  zone.innerHTML = m.kind === 'video'
+    ? `<video src="${esc(m.url)}" controls autoplay playsinline></video>`
+    : `<img src="${esc(m.url)}" alt="">`;
+  $('#loupe-dl').href = m.url;
+  $('#loupe-dl').setAttribute('download', nomTelechargement(m));
+  $('#loupe').classList.add('ouvert');
+}
+function fermerLoupe() {
+  $('#loupe').classList.remove('ouvert');
+  $('#loupe-media').innerHTML = '';
+}
+
+$('#loupe-fermer').addEventListener('click', fermerLoupe);
+$('#loupe').addEventListener('click', e => { if (e.target.id === 'loupe') fermerLoupe(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fermerLoupe(); });
+$('#barre').addEventListener('click', e => {
+  const b = e.target.closest('.filtre'); if (!b) return;
+  FILTRE = b.dataset.f;
+  document.querySelectorAll('.filtre').forEach(x => x.classList.toggle('on', x === b));
+  dessiner();
+});
+
+charger();
+</script>
+</body>
+</html>

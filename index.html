@@ -1679,6 +1679,43 @@ body:not(.media-non-video) .drawer-section.range-photos { display: none; }
 .rec-note-msg.err { color: #e88a8a; }
 .rec-empty, .rec-loading { text-align: center; color: rgba(235,211,160,0.5); padding: 50px 20px; font-size: 14px; grid-column: 1 / -1; }
 .rec-empty small { display: block; margin-top: 8px; color: rgba(235,211,160,0.35); font-size: 12px; }
+/* Acces eleve — 13/09/2026 */
+.eleve-creer { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid rgba(235,211,160,.16);
+  border-radius: 10px; background: rgba(235,211,160,.04); margin-bottom: 20px; }
+.eleve-champ { display: flex; flex-direction: column; gap: 4px; }
+.eleve-champ label { font-size: 12px; color: var(--text-dim, #8fa3ab); }
+.eleve-champ input { padding: 8px 10px; border-radius: 6px; font-size: 14px; font-family: inherit;
+  background: #0e2530; border: 1px solid rgba(235,211,160,.2); color: #ebd3a0; }
+#eleve-compte { min-height: 16px; }
+#eleve-compte.eleve-vide { color: #e88a8a; }
+.eleve-liste-tete { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; font-size: 13px; }
+.eleve-ligne { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center;
+  padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(235,211,160,.1); margin-bottom: 6px; font-size: 13px; }
+.eleve-ligne.revoque { opacity: .5; }
+.eleve-ligne .nom { font-weight: 600; }
+.eleve-ligne .meta { color: var(--text-dim, #8fa3ab); font-size: 11.5px; }
+.eleve-ligne button { padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(235,211,160,.25);
+  background: transparent; color: #ebd3a0; font-size: 12px; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.eleve-ligne button.eleve-copier { background: #ebd3a0; color: #09141A; border-color: #ebd3a0; font-weight: 600; }
+.eleve-ligne button.eleve-revoquer { color: #e88a8a; border-color: rgba(232,138,138,.35); }
+.eleve-picker-tete { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  margin: 4px 0 8px; font-size: 12.5px; color: var(--text-dim, #8fa3ab); flex-wrap: wrap; }
+.eleve-picker-actions { display: flex; gap: 6px; }
+.eleve-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px;
+  max-height: 340px; overflow-y: auto; padding: 4px; border: 1px solid rgba(235,211,160,.12); border-radius: 8px; }
+.eleve-carte { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #0a1a20;
+  cursor: pointer; border: 2px solid transparent; user-select: none; }
+.eleve-carte img, .eleve-carte video { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.eleve-carte.on { border-color: #ebd3a0; box-shadow: 0 0 0 2px rgba(235,211,160,.3) inset; }
+.eleve-carte .coche { position: absolute; top: 5px; left: 5px; width: 19px; height: 19px; border-radius: 5px;
+  background: rgba(9,20,26,.75); border: 1.5px solid rgba(255,255,255,.5); color: #ebd3a0; font-weight: 800;
+  font-size: 12px; display: flex; align-items: center; justify-content: center; }
+.eleve-carte.on .coche { background: #ebd3a0; color: #09141A; border-color: #ebd3a0; }
+.eleve-carte .k { position: absolute; bottom: 4px; right: 4px; font-size: 9px; background: rgba(0,0,0,.55);
+  color: #fff; padding: 1px 5px; border-radius: 4px; }
+.eleve-filtre-actif { display: inline-flex; align-items: center; gap: 6px; margin: 6px 0 8px; padding: 5px 12px;
+  border-radius: 999px; background: rgba(135,214,173,.12); border: 1px solid rgba(135,214,173,.35);
+  color: #87d6ad; font-size: 12.5px; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -1730,6 +1767,7 @@ body:not(.media-non-video) .drawer-section.range-photos { display: none; }
     <button class="sel-toggle" id="sel-flag" type="button" title="Marquer les cartes cochées (✓) comme sélection à signaler">📌 Signaler les cochées</button>
     <button class="sel-toggle" id="sel-view" type="button" title="N'afficher que ma sélection signalée">👁️ Ma sélection <span id="pile-count"></span></button>
     <button class="sel-toggle" id="sel-clear" type="button" title="Tout dé-signaler (vider ma sélection)">✕ Vider</button>
+    <button class="sel-toggle" id="btn-eleve-acces" type="button" title="Donner à une élève l'accès à ses propres photos et vidéos">🔑 Accès élèves</button>
   </header>
 
   <nav class="view-tabs" id="view-tabs">
@@ -2373,13 +2411,70 @@ body:not(.media-non-video) .drawer-section.range-photos { display: none; }
   </div>
 </div>
 
+<!-- Acces eleve : liens secrets personnels vers SES SEULES photos/videos.
+     13/09/2026 -- chaque lien est scope cote serveur (Edge Function), jamais
+     filtre cote client : une eleve ne peut techniquement pas voir les medias
+     d'une autre, meme en modifiant la page. -->
+<div class="modal-bg" id="eleve-modal-bg">
+  <div class="modal" id="eleve-modal">
+    <div class="modal-header">
+      <h2>🔑 Accès élèves</h2>
+      <button class="close" id="eleve-modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" style="margin:0 0 14px">
+        Chaque lien ne montre que les photos et vidéos déjà taguées <b>à son nom</b> (tri « ok »).
+        Envoie-le par mail ou SMS : aucun compte, aucun mot de passe. Tu peux le retirer à tout moment.
+      </p>
+
+      <div class="eleve-creer">
+        <div class="eleve-champ">
+          <label>Qui, dans les photos ?</label>
+          <input id="eleve-participante" list="eleve-noms-connus" placeholder="commence à taper un nom…" autocomplete="off">
+          <datalist id="eleve-noms-connus"></datalist>
+          <span class="hint" id="eleve-compte"></span>
+        </div>
+        <div class="eleve-champ">
+          <label>Comment on l'appelle</label>
+          <input id="eleve-nom-affiche" placeholder="ex. Anaïs">
+        </div>
+        <div class="eleve-champ">
+          <label>Note pour toi (facultatif)</label>
+          <input id="eleve-note" placeholder="son email, la cohorte…">
+        </div>
+
+        <div id="eleve-picker" hidden>
+          <div class="eleve-picker-tete">
+            <span><b>Coche ce qu'elle peut récupérer.</b> Rien de coché = aucun accès.</span>
+            <span class="eleve-picker-actions">
+              <button type="button" class="btn small" id="eleve-tout-cocher">Tout cocher</button>
+              <button type="button" class="btn small" id="eleve-tout-decocher">Tout décocher</button>
+            </span>
+          </div>
+          <div class="eleve-filtre-actif" id="eleve-filtre-actif"></div>
+          <div class="eleve-grille" id="eleve-grille"></div>
+        </div>
+
+        <button class="btn primary" id="eleve-creer-btn" disabled>Créer le lien</button>
+        <button class="btn" id="eleve-annuler-edition" hidden>Annuler la modification</button>
+      </div>
+
+      <div class="eleve-liste-tete">
+        <span>Liens déjà créés</span>
+        <span class="hint" id="eleve-liste-compte"></span>
+      </div>
+      <div id="eleve-liste"><span class="hint">chargement…</span></div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <datalist id="participantes-list"></datalist>
 <datalist id="salles-list"></datalist>
 <!-- Le ?v= est la clé de cache du navigateur. Fige au 13 juillet, il servait
      l'ancien app.js meme quand Netlify en deployait un neuf : trois deploiements
      de suite n'ont rien change a l'ecran. A BUMPER A CHAQUE FOIS. -->
-<script src="app.js?v=20260904b"></script>
+<script src="app.js?v=20260923a"></script>
 <script src="admin.js?v=20260811b"></script>
 </body>
 </html>
