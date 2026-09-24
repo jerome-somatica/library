@@ -2,6 +2,12 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+<script>
+  // 24/09/2026 — la page d'accueil de Library est la vue de tri (tri.html).
+  // On ne reste ici que si on arrive avec une consigne dans l'adresse :
+  // ?mode=picker (retour vers SomaticaEdit), ?ancienne=1 (menu ⋯ de la vue de tri)…
+  if (!location.search) location.replace('tri.html' + location.hash);
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0d1e25">
 <title>Somatica Library</title>
@@ -1711,6 +1717,10 @@ body:not(.media-non-video) .drawer-section.range-photos { display: none; }
   background: rgba(9,20,26,.75); border: 1.5px solid rgba(255,255,255,.5); color: #ebd3a0; font-weight: 800;
   font-size: 12px; display: flex; align-items: center; justify-content: center; }
 .eleve-carte.on .coche { background: #ebd3a0; color: #09141A; border-color: #ebd3a0; }
+/* une autre personne figure aussi sur ce média : à savoir avant de le partager */
+.eleve-carte .avec { position: absolute; left: 4px; right: 26px; bottom: 4px; font-size: 9.5px; line-height: 1.3;
+  background: rgba(232,181,122,.92); color: #09141A; font-weight: 600; padding: 1px 5px; border-radius: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .eleve-carte .k { position: absolute; bottom: 4px; right: 4px; font-size: 9px; background: rgba(0,0,0,.55);
   color: #fff; padding: 1px 5px; border-radius: 4px; }
 .eleve-filtre-actif { display: inline-flex; align-items: center; gap: 6px; margin: 6px 0 8px; padding: 5px 12px;
@@ -1768,6 +1778,7 @@ body:not(.media-non-video) .drawer-section.range-photos { display: none; }
     <button class="sel-toggle" id="sel-view" type="button" title="N'afficher que ma sélection signalée">👁️ Ma sélection <span id="pile-count"></span></button>
     <button class="sel-toggle" id="sel-clear" type="button" title="Tout dé-signaler (vider ma sélection)">✕ Vider</button>
     <button class="sel-toggle" id="btn-eleve-acces" type="button" title="Donner à une élève l'accès à ses propres photos et vidéos">🔑 Accès élèves</button>
+    <a class="sel-toggle" id="btn-vue-tri" href="tri.html" title="Trier, valider, rejeter, retaguer en lot : la nouvelle vue" style="text-decoration:none;background:#ebd3a0;color:#09141a;font-weight:600">🗂 Nouveau tri</a>
   </header>
 
   <nav class="view-tabs" id="view-tabs">
@@ -2474,7 +2485,7 @@ body:not(.media-non-video) .drawer-section.range-photos { display: none; }
 <!-- Le ?v= est la clé de cache du navigateur. Fige au 13 juillet, il servait
      l'ancien app.js meme quand Netlify en deployait un neuf : trois deploiements
      de suite n'ont rien change a l'ecran. A BUMPER A CHAQUE FOIS. -->
-<script src="app.js?v=20260923b"></script>
+<script src="app.js?v=20260923d"></script>
 <script src="admin.js?v=20260811b"></script>
 </body>
 </html>

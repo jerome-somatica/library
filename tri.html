@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Tri — Somatica Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tri.css?v=20260924a">
+</head>
+<body>
+
+<!-- ─────────────── Connexion (même compte que l'ancienne vue) ─────────────── -->
+<div id="connexion" class="connexion" hidden>
+  <div class="connexion-boite">
+    <div class="marque">Somatica <b>Library</b></div>
+    <p class="aide">Même compte que l'ancienne vue : un code arrive par email.</p>
+    <div id="cx-etape-email">
+      <input id="cx-email" type="email" placeholder="ton@email.com" autocomplete="email">
+      <button class="btn primaire" id="cx-envoyer">Recevoir un code</button>
+    </div>
+    <div id="cx-etape-code" hidden>
+      <input id="cx-code" inputmode="numeric" placeholder="code reçu par email" autocomplete="one-time-code">
+      <button class="btn primaire" id="cx-verifier">Se connecter</button>
+      <a href="#" id="cx-changer" class="lien">changer d'email</a>
+    </div>
+    <div id="cx-msg" class="aide"></div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────── Application ─────────────────────────────── -->
+<div id="app" class="app" hidden>
+
+  <header class="barre">
+    <div class="marque">Library <span>tri</span></div>
+
+    <div class="recherche">
+      <span class="loupe-ic">⌕</span>
+      <input id="recherche" type="search" placeholder="Rechercher : nom, participante, salle, description, commentaire…  ( / )" autocomplete="off">
+    </div>
+
+    <div class="seg" id="seg-type">
+      <button data-v="">Tout <i></i></button>
+      <button data-v="video">Vidéos <i></i></button>
+      <button data-v="photo">Photos <i></i></button>
+      <button data-v="couverture" title="Couvertures d'événements Facebook : vidéos finies, format bannière, jamais prises par les moteurs"><span class="long">Couvertures </span>FB <i></i></button>
+    </div>
+
+    <div class="barre-droite">
+      <button class="btn icone" id="btn-son" title="Son de l'aperçu au survol">🔊</button>
+      <button class="btn icone" id="btn-aide" title="Raccourcis clavier ( ? )">?</button>
+      <div class="menu-plus">
+        <button class="btn icone" id="btn-plus" title="Autres outils">⋯</button>
+        <div class="menu" id="menu-plus" hidden>
+          <a href="index.html?ancienne=1">Ancienne vue (tous les outils)</a>
+          <a href="index.html?ancienne=1&ouvrir=eleves">🔑 Accès élèves</a>
+          <a href="index.html?ancienne=1">🔴 Enregistrements live</a>
+          <a href="index.html?ancienne=1">✨ Images et vidéos IA</a>
+          <hr>
+          <button id="btn-recharger">↻ Recharger la banque</button>
+          <button id="btn-deconnexion">Se déconnecter</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="onglets-statut" id="onglets-statut">
+    <button data-v="a_trier">À trier <i></i></button>
+    <button data-v="ok">Validés <i></i></button>
+    <button data-v="refuse">Refusés <i></i></button>
+    <button data-v="bug" class="discret">Bug <i></i></button>
+    <button data-v="">Tous <i></i></button>
+
+    <div class="reglages">
+      <label>Grouper
+        <select id="grouper">
+          <option value="">— aucun —</option>
+          <option value="seance">par séance (jour + salle)</option>
+          <option value="jour">par jour</option>
+          <option value="mois">par mois</option>
+          <option value="participante">par participante</option>
+          <option value="salle">par salle</option>
+        </select>
+      </label>
+      <label>Trier
+        <select id="trier">
+          <option value="date_desc">Tournage, récent d'abord</option>
+          <option value="date_asc">Tournage, ancien d'abord</option>
+          <option value="ajout_desc">Ajout, récent d'abord</option>
+          <option value="nom">Nom de fichier</option>
+          <option value="duree_desc">Durée, longue d'abord</option>
+          <option value="note_desc">Note, meilleure d'abord</option>
+        </select>
+      </label>
+      <label class="taille" title="Taille des vignettes">▫<input id="taille" type="range" min="90" max="320" step="10">▣</label>
+    </div>
+  </div>
+
+  <div class="corps">
+
+    <!-- Filtres -->
+    <aside class="filtres" id="filtres">
+      <div class="filtres-tete">
+        <b>Filtres</b>
+        <button class="lien" id="effacer-filtres" hidden>tout effacer</button>
+        <button class="btn primaire mobile-seul" id="fermer-filtres">Voir les médias</button>
+      </div>
+      <div id="facettes"></div>
+    </aside>
+
+    <!-- Grille -->
+    <main class="centre">
+      <div class="actifs" id="actifs"></div>
+      <div class="barre-selection" id="barre-selection">
+        <button class="btn mobile-seul" id="btn-filtres-mobile">⚲ Filtres</button>
+        <span id="compte-vue"></span>
+        <span class="espace"></span>
+        <button class="lien" id="tout-selectionner">tout sélectionner</button>
+        <button class="lien" id="deselectionner" hidden>désélectionner</button>
+      </div>
+      <div class="grille-zone" id="grille-zone">
+        <div class="grille" id="grille"></div>
+        <div class="sentinelle" id="sentinelle"></div>
+        <div class="vide" id="vide" hidden>
+          <b>Rien ici.</b>
+          <span>Aucun média ne correspond à ces filtres.</span>
+        </div>
+        <div class="chargement" id="chargement">
+          <div class="spin"></div>
+          <span id="chargement-txt">Chargement de la banque…</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- Inspecteur : édite la sélection, qu'elle compte 1 ou 300 médias -->
+    <aside class="inspecteur" id="inspecteur">
+      <div class="insp-vide" id="insp-vide">
+        <div class="insp-vide-ic">☐</div>
+        <b>Sélectionne un ou plusieurs médias</b>
+        <p>Clic : un média · <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+clic : en ajouter · <kbd>Maj</kbd>+clic : une série.<br>
+          Tout ce que tu règles ici s'applique à toute la sélection.</p>
+      </div>
+      <div class="insp" id="insp" hidden></div>
+    </aside>
+  </div>
+
+  <!-- Toast + annuler -->
+  <div class="toast" id="toast" hidden>
+    <span id="toast-txt"></span>
+    <button class="lien" id="toast-annuler" hidden>Annuler</button>
+  </div>
+</div>
+
+<!-- Aperçu plein écran -->
+<div class="visionneuse" id="visionneuse" hidden>
+  <button class="vis-nav gauche" id="vis-prec" title="Précédent (←)">‹</button>
+  <div class="vis-media" id="vis-media"></div>
+  <button class="vis-nav droite" id="vis-suiv" title="Suivant (→)">›</button>
+  <div class="vis-bas">
+    <div class="vis-info" id="vis-info"></div>
+    <div class="vis-actions">
+      <button class="btn valider" data-statut="ok">✓ Valider <kbd>V</kbd></button>
+      <button class="btn rejeter" data-statut="refuse">✕ Rejeter <kbd>X</kbd></button>
+      <button class="btn" data-statut="a_trier">↺ À trier <kbd>U</kbd></button>
+      <button class="btn" id="vis-fermer">Fermer <kbd>Échap</kbd></button>
+    </div>
+  </div>
+</div>
+
+<!-- Renommer / fusionner une valeur (participante, salle) -->
+<div class="fenetre-fond" id="fusion" hidden>
+  <div class="fenetre">
+    <b id="fusion-titre">Renommer</b>
+    <p class="aide" id="fusion-aide"></p>
+    <input id="fusion-cible" list="fusion-liste" autocomplete="off">
+    <datalist id="fusion-liste"></datalist>
+    <p class="aide" id="fusion-note"></p>
+    <div class="fenetre-actions">
+      <button class="btn" id="fusion-annuler">Annuler</button>
+      <button class="btn primaire" id="fusion-ok">Appliquer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Aide clavier -->
+<div class="fenetre-fond" id="aide-clavier" hidden>
+  <div class="fenetre large">
+    <b>Raccourcis</b>
+    <div class="raccourcis">
+      <div><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd><span>se déplacer</span></div>
+      <div><kbd>Maj</kbd>+flèches<span>étendre la sélection</span></div>
+      <div><kbd>⌘</kbd><kbd>A</kbd><span>tout sélectionner (la vue filtrée)</span></div>
+      <div><kbd>Échap</kbd><span>tout désélectionner</span></div>
+      <div><kbd>Espace</kbd><span>aperçu en grand</span></div>
+      <div><kbd>V</kbd><span>valider</span></div>
+      <div><kbd>X</kbd><span>rejeter</span></div>
+      <div><kbd>U</kbd><span>remettre à trier</span></div>
+      <div><kbd>1</kbd>…<kbd>9</kbd> <kbd>0</kbd><span>note de 1 à 10</span></div>
+      <div><kbd>P</kbd><span>ajouter une personne</span></div>
+      <div><kbd>S</kbd><span>salle</span></div>
+      <div><kbd>/</kbd><span>rechercher</span></div>
+      <div><kbd>⌘</kbd><kbd>Z</kbd><span>annuler la dernière action</span></div>
+    </div>
+    <p class="aide">Après <kbd>V</kbd> ou <kbd>X</kbd> sur un seul média, on passe tout seul au suivant.</p>
+    <div class="fenetre-actions"><button class="btn primaire" id="aide-fermer">Compris</button></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="tri.js?v=20260924a"></script>
+</body>
+</html>

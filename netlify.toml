@@ -20,6 +20,11 @@
   [headers.values]
     Cache-Control = "no-cache, must-revalidate"
 
+[[headers]]
+  for = "/tri.html"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

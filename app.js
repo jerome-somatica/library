@@ -4197,6 +4197,7 @@ function eleveDessinerGrille() {
     return `<div class="eleve-carte${on ? ' on' : ''}" data-i="${i}" title="${escapeAttr(m.nom || '')}">
       ${media}<span class="coche">${on ? '✓' : ''}</span>
       <span class="k">${m.kind === 'video' ? '🎬' : '🖼'}</span>
+      ${m.avec?.length ? `<span class="avec" title="Aussi sur ce média : ${escapeHtml(m.avec.join(', '))}">+ ${escapeHtml(m.avec.join(', '))}</span>` : ''}
     </div>`;
   }).join('');
   grille.querySelectorAll('.eleve-carte video').forEach(v => {
@@ -4296,6 +4297,18 @@ async function eleveChargerListe() {
 }
 
 $('btn-eleve-acces')?.addEventListener('click', eleveOuvrir);
+// Venu de la vue de tri (menu ⋯ → Accès élèves) : on ouvre la fenêtre dès que la
+// Library est affichée, c'est-à-dire une fois connecté.
+// En mode sélection pour SomaticaEdit, on ne propose pas de quitter vers la vue de tri.
+if (PICKER_MODE) $('btn-vue-tri')?.remove();
+if (_urlParams.get('ouvrir') === 'eleves') {
+  const debut = Date.now();
+  const ouvrirQuandPret = () => {
+    if (app.style.display === 'block') eleveOuvrir();
+    else if (Date.now() - debut < 20 * 60 * 1000) setTimeout(ouvrirQuandPret, 500);
+  };
+  ouvrirQuandPret();
+}
 $('eleve-modal-close')?.addEventListener('click', eleveFermer);
 $('eleve-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'eleve-modal-bg') eleveFermer(); });
 $('eleve-participante')?.addEventListener('input', eleveSurSaisieNom);
